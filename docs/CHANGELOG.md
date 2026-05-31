@@ -16,11 +16,12 @@
 - **minDeltaChars**: 200 → 50（流式更新更频繁）
 - **editMessage**: 改为 fire-and-forget（不阻塞管道）
 - **移除心跳机制**: `setInterval` 导致 shutdown 卡死、终止失效、重启复活等 4 个 bug
+- **去重提前**: 从 `messageHandler` 移到 `index.ts onMessage`顶层，覆盖命令管道
 - **默认模型**: deepseek-v4-pro (opencode-go provider)
 - **移除 poller**: TUI→飞书转发已移除（防止消息循环混淆）
 - **去重 TTL**: 60s → 5min（覆盖 WS 断线重连重放）
 - **catcaffe 清理**: bot 名称硬编码 → env 配置，移除全部 🐱 emoji 和猫主题签收语
-- **移除 poller**: TUI→飞书转发已移除（防止消息循环混淆）
+- **清理死代码**: `feishu-poller.ts` 物理删除
 
 ### Fixed
 
@@ -28,10 +29,12 @@
 - **B002**: `--plan` 标志在 opencode v1.15.13 不存在 — 相关命令已回退
 - **B003**: Poller 误转发飞书消息 — 移除 poller
 - **B004**: `editMessage` "🐱 回复中..." header 覆盖卡片 — 改用 SDK 直接 PATCH
+- **B005**: WS 重连重放 + 心跳阻塞 shutdown — 去重 TTL + 移除心跳
+- **B006**: 命令管道无去重保护，WS 重放命令自动回复 — 去重提前到 onMessage 顶层
 
 ### Docs
 
-- 新增 `docs/bugs/` 4 篇踩坑记录
+- 新增 `docs/bugs/` 6 篇踩坑记录
 - 文档体系对齐 escape-pilot 结构（23 文件）
 
 ---

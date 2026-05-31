@@ -58,7 +58,7 @@ async function main() {
   const outbound = createOutboundHandler(adapter, streamingHook)
   const mediaService = new MediaService(adapter)
   await mediaService.ensureDir()
-  const messageHandler = createMessageHandler(sessionManager, dedup, outbound, mediaService)
+  const messageHandler = createMessageHandler(sessionManager, outbound, mediaService)
 
   // Inflight request tracker for graceful shutdown
   let inflightCount = 0
@@ -84,6 +84,13 @@ async function main() {
         log.info({ chatId: (data as any)?.message?.chat_id }, 'Event skipped by parseEvent (unsupported/not-mentioned)')
         return
       }
+
+      // Dedup check — must run before command handler to prevent WS replay re-execution
+      if (dedup.isDuplicate(parsed.messageId)) {
+        log.info({ messageId: parsed.messageId }, 'Duplicate event, skipping (command-safe dedup)')
+        return
+      }
+      dedup.mark(parsed.messageId)
 
       // Add reaction as instant feedback
       try {

@@ -1,7 +1,6 @@
 import { createLogger } from '../utils/logger.js'
 import type { FeishuInboundMessage } from '../feishu/FeishuAdapter.js'
 import type { SessionManager } from './session-manager.js'
-import type { MessageDedup } from './message-dedup.js'
 import type { OutboundHandler } from './outbound.js'
 import { opencodeRun } from './opencode-run.js'
 import { registerRun, unregisterRun } from '../feishu/card-interaction.js'
@@ -15,7 +14,6 @@ export interface MessageHandler {
 
 export function createMessageHandler(
   sessionManager: SessionManager,
-  dedup: MessageDedup,
   outbound: OutboundHandler,
   media?: MediaService,
 ): MessageHandler {
@@ -28,12 +26,6 @@ export function createMessageHandler(
       log.info({ chatId, messageId }, 'Empty message, skipping')
       return
     }
-
-    if (dedup.isDuplicate(messageId)) {
-      log.info({ messageId }, 'Duplicate message, skipping')
-      return
-    }
-    dedup.mark(messageId)
 
     log.info({ chatId, text: text.slice(0, 80) }, 'Processing message')
 
