@@ -15,6 +15,8 @@ export interface OpenCodeRunOptions {
   cwd?: string
   /** Callback for each text event as it arrives from NDJSON */
   onText?: (text: string) => void | Promise<void>
+  /** Callback when a tool_use event is detected (tool name + running/done/error) */
+  onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void
 }
 
 export function opencodeRun(opts: OpenCodeRunOptions & { prompt: string; sessionId?: string; cwd?: string; onText?: (text: string) => void | Promise<void> }): Promise<RunResult>
