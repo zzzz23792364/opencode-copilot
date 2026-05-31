@@ -62,7 +62,6 @@ export function createOutboundHandler(
         },
         onEnd: async (finalText: string) => {
           await streamingHook.onStreamEnd(connectorId, chatId, finalText)
-          await streamingHook.cleanupPlaceholders(connectorId, chatId)
         },
         onError: (err: Error) => {
           log.warn({ err: String(err), chatId }, 'Streaming error')

@@ -102,14 +102,13 @@ export class StreamingOutboundHook {
     const adapter = this.opts.adapters.get(connectorId)
     if (!session.platformMessageId) return
 
-    if (adapter?.deleteMessage || adapter?.finalizeStreamCard) {
-      this.pendingCleanup.set(externalChatId, session)
-    } else if (adapter?.editMessage) {
-      try {
-        await adapter.editMessage(session.externalChatId, session.platformMessageId, finalText)
-      } catch (err) {
-        this.opts.log.warn({ err: String(err) }, '[StreamingOutbound] onStreamEnd editMessage failed')
-      }
+    // For simple bridge: always update the card with final text.
+    // clowder-local sends a separate formatted reply and then cleans up the placeholder.
+    // We use the streaming card AS the reply.
+    try {
+      await adapter?.editMessage?.(session.externalChatId, session.platformMessageId, finalText)
+    } catch (err) {
+      this.opts.log.warn({ err: String(err) }, '[StreamingOutbound] onStreamEnd editMessage failed')
     }
   }
 
