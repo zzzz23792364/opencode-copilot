@@ -93,7 +93,8 @@ async function main() {
       )
       if (cmdResult) {
         if (cmdResult.kind === 'thread') {
-          const result = await opencodeRun(cmdResult.message, cmdResult.sessionId)
+          const session = sessionManager.getSession(parsed.chatId)
+          const result = await opencodeRun(cmdResult.message, cmdResult.sessionId, session?.opencode_cwd || undefined)
           await outbound.sendFormatted(parsed.chatId, result.text, '消息')
         } else {
           outbound.sendFormatted(parsed.chatId, cmdResult.text, '命令结果').catch(() => {})

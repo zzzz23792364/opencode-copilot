@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process'
 import { getSessionStmt } from '../utils/db.js'
 import { createLogger } from '../utils/logger.js'
 import type { SessionManager } from '../bridge/session-manager.js'
+import { listProjects, listSessions } from '../utils/opencode-db.js'
 
 const log = createLogger('commands')
 
@@ -15,6 +16,19 @@ export interface CommandHandler {
   handle(text: string, chatId: string, senderId: string, sessionManager: SessionManager, db: Database): Promise<CommandResult>
 }
 
+/** Resolve a session ID from a list by numeric index, exact ID, or prefix match. */
+function resolveSession(
+  sessions: Array<{ id: string; title?: string | null }>,
+  query: string,
+): string | null {
+  const num = parseInt(query, 10)
+  if (num >= 1 && num <= sessions.length) return sessions[num - 1].id
+  if (query.startsWith('ses_') && sessions.some(s => s.id === query)) return query
+  const prefix = sessions.filter(s => s.id.startsWith(query))
+  if (prefix.length === 1) return prefix[0].id
+  return null
+}
+
 export function createCommandHandler(): CommandHandler {
   const stmtCache = new WeakMap<Database, ReturnType<typeof getSessionStmt>>()
 
@@ -24,25 +38,27 @@ export function createCommandHandler(): CommandHandler {
   }
 
   function bindSession(db: Database, chatId: string, sessionId: string) {
-    getStmt(db).upsert.run(chatId, sessionId, 'default', null, Date.now(), Date.now())
+    getStmt(db).upsert.run(chatId, sessionId, 'default', null, null, Date.now(), Date.now())
   }
 
-  /** Query opencode for all sessions with titles. Returns { id, title }[]. */
-  async function getOpendcodeSessions(): Promise<Array<{ id: string; title: string }>> {
-    return new Promise((resolve) => {
-      const proc = spawn('opencode', ['session', 'list', '--format', 'json'])
-      let out = ''
-      proc.stdout.on('data', (chunk: Buffer) => { out += chunk.toString() })
-      proc.on('close', () => {
-        try {
-          const sessions = JSON.parse(out) as Array<{ id: string; title: string }>
-          resolve(sessions)
-        } catch {
-          resolve([])
-        }
-      })
-      proc.on('error', () => resolve([]))
-    })
+  /** Get the opengcode project directory for the current chat. */
+  function getCwd(db: Database, chatId: string): string | null {
+    const row = getStmt(db).get.get(chatId) as { opencode_cwd: string | null } | null
+    return row?.opencode_cwd ?? null
+  }
+
+  function setCwd(db: Database, chatId: string, cwd: string) {
+    // Ensure a row exists (upsert with the cwd)
+    getStmt(db).upsert.run(chatId, 'placeholder', 'default', null, cwd, Date.now(), Date.now())
+    // Update just the cwd
+    const stmt = db.prepare('UPDATE feishu_sessions SET opencode_cwd = ?, last_active = ? WHERE feishu_key = ?')
+    stmt.run(cwd, Date.now(), chatId)
+  }
+
+  /** Get sessions for the selected (or default) project. */
+  function getSessionsForCurrent(db: Database, chatId: string, defaultCwd: string) {
+    const cwd = getCwd(db, chatId) || defaultCwd
+    return { cwd, sessions: listSessions(cwd) }
   }
 
   async function handle(
@@ -57,77 +73,97 @@ export function createCommandHandler(): CommandHandler {
     // /new
     if (trimmed === '/new' || trimmed.startsWith('/new ')) {
       getStmt(db).remove.run(chatId)
-      const sessionId = await sessionManager.getOrCreate(chatId)
+      const { sessionId } = await sessionManager.getOrCreate(chatId)
       log.info({ chatId, sessionId }, 'Created new session via /new')
       return { kind: 'reply', text: `✅ 新会话已创建\nSession: ${sessionId}` }
     }
 
-    // /list [-all] — list sessions (default: bound; -all: all opencode sessions)
-    if (trimmed === '/list' || trimmed === '/sessions' || trimmed === '/list -all' || trimmed === '/list --all') {
-      const allMode = trimmed.includes('-all')
-      const stmt = getStmt(db)
-      const opencodeSessions = await getOpendcodeSessions()
-      const titleMap = new Map(opencodeSessions.map(s => [s.id, s.title]))
-
-      if (allMode) {
-        // Show ALL opencode sessions, mark bound ones
-        const localSessions = stmt.list.all() as Array<{ feishu_key: string; session_id: string }>
-        const boundSet = new Set(localSessions.map(s => s.session_id))
-        if (opencodeSessions.length === 0) return { kind: 'reply', text: '📭 暂无 opencode 会话' }
-        const lines = opencodeSessions.slice(0, 15).map((s, i) => {
-          const isBound = boundSet.has(s.id) ? ' ✓' : ''
-          const shortId = s.id.slice(0, 10) + '...'
-          return `[${i + 1}] ${s.title || shortId}${isBound}`
-        })
-        return {
-          kind: 'reply',
-          text: `📋 全部会话 (${opencodeSessions.length}，✓ = 已绑定):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定`,
-        }
-      }
-
-      // Default: show bound sessions only
-      const localSessions = stmt.list.all() as Array<{
-        feishu_key: string; session_id: string; last_active: number
-      }>
-      if (localSessions.length === 0) {
-        if (opencodeSessions.length === 0) return { kind: 'reply', text: '📭 暂无会话\n使用 /new 创建新会话，或用 /list -all 查看全部' }
-        const lines = opencodeSessions.slice(0, 10).map((s, i) => {
-          const shortId = s.id.slice(0, 12) + '...'
-          return `[${i + 1}] ${s.title || shortId}`
-        })
-        return { kind: 'reply', text: `📋 可用会话 (${opencodeSessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定` }
-      }
-
-      const lines = localSessions.map((s, i) => {
-        const time = new Date(s.last_active).toLocaleTimeString('zh-CN')
-        const title = titleMap.get(s.session_id) || s.session_id.slice(0, 12) + '...'
-        return `[${i + 1}] ${title}  ${time}`
+    // /projects — list all project directories
+    if (trimmed === '/projects') {
+      const projects = listProjects()
+      if (projects.length === 0) return { kind: 'reply', text: '📭 暂无 opencode 项目' }
+      const currentCwd = getCwd(db, chatId)
+      const lines = projects.map((p, i) => {
+        const dirName = p.directory.split('/').pop() || p.directory
+        const cur = p.directory === currentCwd ? ' ✓' : ''
+        return `[${i + 1}] ${dirName}  (${p.count} sessions)${cur}`
       })
       return {
         kind: 'reply',
-        text: `📋 已绑定会话 (${localSessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定，/list -all 查看全部`,
+        text: `📁 项目 (${projects.length}):\n${lines.join('\n')}\n\n用 /project <编号> 选择项目`,
       }
     }
 
-    // /thread <id> <message> — bind + send in one shot
+    // /project <N> — select project directory
+    if (trimmed.startsWith('/project ')) {
+      const query = trimmed.slice('/project '.length).trim()
+      const projects = listProjects()
+      const num = parseInt(query, 10)
+      if (num >= 1 && num <= projects.length) {
+        setCwd(db, chatId, projects[num - 1].directory)
+        const dirName = projects[num - 1].directory.split('/').pop()
+        return { kind: 'reply', text: `✅ 已选择项目: ${dirName}\n\n用 /list 查看会话` }
+      }
+      return { kind: 'reply', text: `❌ 无效的项目编号，用 /projects 查看可用项目` }
+    }
+
+    // /list [-all] — list sessions (default: selected project; -all: all projects)
+    if (trimmed === '/list' || trimmed === '/sessions' || trimmed === '/list -all' || trimmed === '/list --all') {
+      const allMode = trimmed.includes('-all')
+      const defaultCwd = process.cwd()
+
+      if (allMode) {
+        // Show ALL sessions across all projects
+        const projects = listProjects()
+        if (projects.length === 0) return { kind: 'reply', text: '📭 暂无会话' }
+        const lines: string[] = []
+        let idx = 0
+        for (const p of projects) {
+          const dirName = p.directory.split('/').pop() || p.directory
+          lines.push(`📁 ${dirName}`)
+          const sessions = listSessions(p.directory, 5)
+          for (const s of sessions) {
+            idx++
+            lines.push(`  [${idx}] ${s.title || s.id.slice(0, 12) + '...'}`)
+          }
+        }
+        return { kind: 'reply', text: `📋 全部会话:\n${lines.join('\n')}\n\n用 /project <编号> 选择项目` }
+      }
+
+      // Default: selected project
+      const currentCwd = getCwd(db, chatId) || defaultCwd
+      const sessions = listSessions(currentCwd)
+      const dirName = currentCwd.split('/').pop() || currentCwd
+      if (sessions.length === 0) {
+        return { kind: 'reply', text: `📭 ${dirName} 暂无会话\n用 /projects 查看其他项目` }
+      }
+      const lines = sessions.map((s, i) => {
+        return `[${i + 1}] ${s.title || s.id.slice(0, 12) + '...'}`
+      })
+      return {
+        kind: 'reply',
+        text: `📋 ${dirName} (${sessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定`,
+      }
+    }
+
+    // /thread <id> <message>
     const threadMatch = trimmed.match(/^\/thread\s+(\S+)\s+(.+)$/s)
     if (threadMatch) {
       const [, idPart, msg] = threadMatch
-      const stmt = getStmt(db)
-      const sessions = stmt.list.all() as Array<{ feishu_key: string; session_id: string }>
+      const defaultCwd = process.cwd()
+      const currentCwd = getCwd(db, chatId) || defaultCwd
+      const sessions = listSessions(currentCwd)
 
       const resolved = resolveSession(sessions, idPart)
       if (!resolved) {
-        // Try opencode title search
-        const external = await getOpendcodeSessions()
-        const titleMatch = external.find(s => s.title.toLowerCase().includes(idPart.toLowerCase()))
+        // Try title match
+        const titleMatch = sessions.find(s => (s.title || '').toLowerCase().includes(idPart.toLowerCase()))
         if (titleMatch) {
           bindSession(db, chatId, titleMatch.id)
           return { kind: 'thread', sessionId: titleMatch.id, message: msg }
         }
         return { kind: 'reply', text: `❌ 未找到匹配: "${idPart}"\n用 /list 查看可用会话` }
       }
-
       bindSession(db, chatId, resolved)
       return { kind: 'thread', sessionId: resolved, message: msg }
     }
@@ -140,45 +176,28 @@ export function createCommandHandler(): CommandHandler {
       return { kind: 'reply', text: `✅ 已绑定到 Session: ${sessionId}` }
     }
 
-    // /use <N> | <session_id> | <prefix> | <title substring>
+    // /use <N> | <session_id> | <prefix> | <title>
     if (trimmed.startsWith('/use ')) {
       const query = trimmed.slice('/use '.length).trim()
-      const stmt = getStmt(db)
-      const sessions = stmt.list.all() as Array<{ feishu_key: string; session_id: string }>
+      const defaultCwd = process.cwd()
+      const currentCwd = getCwd(db, chatId) || defaultCwd
+      const sessions = listSessions(currentCwd)
 
-      // Try numeric index
-      const index = parseInt(query, 10)
-      if (index >= 1 && index <= sessions.length) {
-        const sessionId = sessions[index - 1].session_id
-        bindSession(db, chatId, sessionId)
-        return { kind: 'reply', text: `✅ 已绑定到 #${index}: ${sessionId}` }
+      const resolved = resolveSession(sessions, query)
+      if (resolved) {
+        bindSession(db, chatId, resolved)
+        return { kind: 'reply', text: `✅ 已绑定到 Session: ${resolved}` }
       }
 
-      // Try exact ID match
-      if (query.startsWith('ses_')) {
-        bindSession(db, chatId, query)
-        return { kind: 'reply', text: `✅ 已绑定到 Session: ${query}` }
-      }
-
-      // Try prefix match on session_id
-      const byPrefix = sessions.filter(s => s.session_id.startsWith(query))
-      if (byPrefix.length === 1) {
-        bindSession(db, chatId, byPrefix[0].session_id)
-        return { kind: 'reply', text: `✅ 已绑定到 Session: ${byPrefix[0].session_id}` }
-      }
-      if (byPrefix.length > 1) {
-        return { kind: 'reply', text: `❌ 多个匹配:\n${byPrefix.map(s => '  ' + s.session_id).join('\n')}` }
-      }
-
-      // Try title match by querying opencode
-      const external = await getOpendcodeSessions()
-      const titleMatch = external.find(s => s.title.toLowerCase().includes(query.toLowerCase()))
+      // Try title match
+      const titleMatch = sessions.find(s => (s.title || '').toLowerCase().includes(query.toLowerCase()))
       if (titleMatch) {
         bindSession(db, chatId, titleMatch.id)
         return { kind: 'reply', text: `✅ 已绑定到 "${titleMatch.title}": ${titleMatch.id}` }
       }
 
-      return { kind: 'reply', text: `❌ 未找到匹配: "${query}"\n用 /list 查看可用会话，或用标题匹配` }
+      const dirName = currentCwd.split('/').pop()
+      return { kind: 'reply', text: `❌ 未找到匹配: "${query}"\n项目: ${dirName}\n用 /list 查看可用会话` }
     }
 
     // /unbind
@@ -192,11 +211,14 @@ export function createCommandHandler(): CommandHandler {
     // /where /status
     if (trimmed === '/where' || trimmed === '/status') {
       const existing = sessionManager.getSession(chatId)
-      if (!existing) return { kind: 'reply', text: '❌ 当前对话没有绑定的会话\n\n用 /new 创建新会话 或 /use <id> 绑定已有会话' }
-      const time = new Date(existing.last_active).toLocaleString('zh-CN')
+      const currentCwd = getCwd(db, chatId) || process.cwd()
+      const dirName = currentCwd.split('/').pop()
+      const bindText = existing
+        ? `Session: ${existing.session_id}\n最近活跃: ${new Date(existing.last_active).toLocaleString('zh-CN')}`
+        : '未绑定会话'
       return {
         kind: 'reply',
-        text: `📍 当前绑定\nSession: ${existing.session_id}\n最近活跃: ${time}\nChat: ${chatId.slice(0, 16)}...`,
+        text: `📍 当前状态\n项目: ${dirName}\n${bindText}\nChat: ${chatId.slice(0, 16)}...`,
       }
     }
 
@@ -206,16 +228,16 @@ export function createCommandHandler(): CommandHandler {
         kind: 'reply',
         text: `🐱 **opencode-copilot**\n
 \`/new\` — 创建新会话
-\`/list\` — 查看已绑定会话（带编号/标题）
-\`/list -all\` — 查看所有 opencode 会话
+\`/projects\` — 查看所有项目目录
+\`/project <编号>\` — 选择项目目录
+\`/list\` — 查看当前项目的会话
+\`/list -all\` — 查看所有项目的会话
 \`/use <编号|ID|前缀|标题>\` — 绑定会话
 \`/thread <id> <msg>\` — 绑定并直接发消息
 \`/connect <id>\` — 直接绑定
 \`/unbind\` — 取消绑定
-\`/where\` / \`/status\` — 查看当前绑定
-\`/commands\` / \`/help\` — 命令列表
-
-Chat: ${chatId.slice(0, 16)}...`,
+\`/where\` / \`/status\` — 查看当前绑定信息
+\`/commands\` / \`/help\` — 命令列表`,
       }
     }
 
@@ -223,17 +245,4 @@ Chat: ${chatId.slice(0, 16)}...`,
   }
 
   return { handle }
-}
-
-/** Resolve session from local list by numeric index, full ID, or prefix. */
-function resolveSession(
-  sessions: Array<{ feishu_key: string; session_id: string }>,
-  query: string,
-): string | null {
-  const num = parseInt(query, 10)
-  if (num >= 1 && num <= sessions.length) return sessions[num - 1].session_id
-  if (query.startsWith('ses_') && sessions.some(s => s.session_id === query)) return query
-  const prefix = sessions.filter(s => s.session_id.startsWith(query))
-  if (prefix.length === 1) return prefix[0].session_id
-  return null
 }

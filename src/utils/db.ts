@@ -8,6 +8,7 @@ export interface SessionRow {
   session_id: string
   agent: string
   model: string | null
+  opencode_cwd: string | null
   created_at: number
   last_active: number
 }
@@ -18,13 +19,17 @@ export function createDatabase(dbPath: string): Database {
   db.exec('PRAGMA journal_mode=WAL')
 
   db.exec(`CREATE TABLE IF NOT EXISTS feishu_sessions (
-    feishu_key  TEXT PRIMARY KEY,
-    session_id  TEXT NOT NULL,
-    agent       TEXT NOT NULL DEFAULT 'default',
-    model       TEXT,
-    created_at  INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
-    last_active INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+    feishu_key   TEXT PRIMARY KEY,
+    session_id   TEXT NOT NULL,
+    agent        TEXT NOT NULL DEFAULT 'default',
+    model        TEXT,
+    opencode_cwd TEXT,
+    created_at   INTEGER NOT NULL DEFAULT (unixepoch() * 1000),
+    last_active  INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`)
+
+  // Migration: add opencode_cwd column if missing
+  try { db.exec('ALTER TABLE feishu_sessions ADD COLUMN opencode_cwd TEXT') } catch {}
 
   db.exec(`CREATE TABLE IF NOT EXISTS dedup (
     message_id TEXT PRIMARY KEY,
@@ -47,8 +52,8 @@ export function getSessionStmt(db: Database) {
   return {
     get: db.prepare<SessionRow, string>('SELECT * FROM feishu_sessions WHERE feishu_key = ?'),
     upsert: db.prepare(
-      `INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, created_at, last_active)
-       VALUES (?, ?, ?, ?, ?, ?)`
+      `INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, created_at, last_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`
     ),
     touch: db.prepare(
       'UPDATE feishu_sessions SET last_active = ? WHERE feishu_key = ?'

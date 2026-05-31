@@ -47,10 +47,10 @@ export function createMessageHandler(
       }
     }
 
-    const sessionId = await sessionManager.getOrCreate(chatId)
+    const { sessionId, cwd } = await sessionManager.getOrCreate(chatId)
 
     log.info({ chatId, sessionId }, 'Running opencode')
-    const result = await opencodeRun(prompt, sessionId)
+    const result = await opencodeRun(prompt, sessionId, cwd || undefined)
 
     if (result.sessionId && result.sessionId !== sessionId) {
       log.info({ old: sessionId, new: result.sessionId }, 'Session ID changed')
