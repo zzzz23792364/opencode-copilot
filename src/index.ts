@@ -16,7 +16,8 @@ import { opencodeRun } from './bridge/opencode-run.js'
 import { MediaService } from './bridge/media-service.js'
 import { createCommandHandler } from './commands/handlers.js'
 import { startPoller } from './feishu-poller.js'
-import type { FeishuInboundMessage, FeishuCardAction } from './feishu/FeishuAdapter.js'
+import { buildSessionListCard, sendCard, handleCardAction } from './feishu/card-interaction.js'
+import type { FeishuInboundMessage } from './feishu/FeishuAdapter.js'
 import type { Database } from 'bun:sqlite'
 
 const log = createLogger('index')
@@ -94,11 +95,12 @@ async function main() {
       if (cmdResult) {
         if (cmdResult.kind === 'thread') {
           const session = sessionManager.getSession(parsed.chatId)
-          const result = await opencodeRun(cmdResult.message, {
-            sessionId: cmdResult.sessionId,
-            cwd: session?.opencode_cwd || undefined,
-          })
+          const result = await opencodeRun(cmdResult.message, cmdResult.sessionId, session?.opencode_cwd || undefined)
           await outbound.sendFormatted(parsed.chatId, result.text)
+        } else if (cmdResult.kind === 'card') {
+          const projectName = parsed.text === '/list -all' ? 'all' : 'local'
+          const card = buildSessionListCard(parsed.chatId, cmdResult.context.sessionList, projectName)
+          await sendCard(adapter, parsed.chatId, card, cmdResult.context).catch(() => {})
         } else {
           outbound.sendFormatted(parsed.chatId, cmdResult.text, '命令结果').catch(() => {})
         }
@@ -114,9 +116,9 @@ async function main() {
 
   // ── Card action handler ──
 
-  async function onCardAction(action: FeishuCardAction) {
-    log.info({ senderId: action.senderId, actionValue: action.actionValue }, 'Card action received')
-    // Future: route card actions to appropriate handlers
+  async function onCardAction(action: FeishuCardAction & { open_message_id?: string }) {
+    log.info({ senderId: action.senderId, actionValue: action.actionValue }, 'Card action')
+    await handleCardAction(action, adapter, db)
   }
 
   // Start Feishu WS

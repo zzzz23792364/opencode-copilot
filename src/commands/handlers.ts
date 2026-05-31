@@ -10,6 +10,7 @@ const log = createLogger('commands')
 export type CommandResult =
   | { kind: 'reply'; text: string }
   | { kind: 'thread'; sessionId: string; message: string }
+  | { kind: 'card'; card: object; context: { actionType: string; sessionList: Array<{ id: string; title: string | null }> } }
   | null
 
 export interface CommandHandler {
@@ -131,20 +132,17 @@ export function createCommandHandler(): CommandHandler {
         return { kind: 'reply', text: `📋 全部会话 (✓ = 当前):\n${lines.join('\n')}\n\n用 /project <编号> 选择项目` }
       }
 
-      // Default: selected project
+      // Default: selected project — return interactive card
       const currentCwd = getCwd(db, chatId) || defaultCwd
       const sessions = listSessions(currentCwd)
       const dirName = currentCwd.split('/').pop() || currentCwd
       if (sessions.length === 0) {
         return { kind: 'reply', text: `📭 ${dirName} 暂无会话\n用 /projects 查看其他项目` }
       }
-      const lines = sessions.map((s, i) => {
-        const mark = bound?.session_id === s.id ? ' ✓' : ''
-        return `[${i + 1}] ${s.title || s.id.slice(0, 12) + '...'}${mark}`
-      })
       return {
-        kind: 'reply',
-        text: `📋 ${dirName} (${sessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定`,
+        kind: 'card',
+        card: null as any, // card built in index.ts
+        context: { actionType: 'list_sessions', sessionList: sessions },
       }
     }
 

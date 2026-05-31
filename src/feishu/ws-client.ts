@@ -34,10 +34,11 @@ export function createWSClient(deps: WSClientDeps) {
     eventDispatcher.register({
       'card.action.trigger': async (data: any) => {
         try {
-          const action: FeishuCardAction = {
-            chatId: '',
+          const action: FeishuCardAction & { open_message_id?: string } = {
+            chatId: data.context?.open_chat_id ?? '',
             senderId: data.operator?.open_id ?? 'unknown',
             actionValue: data.action?.value ?? {},
+            open_message_id: data.context?.open_message_id ?? '',
           }
           void onCardAction(action).catch((err) => {
             log.error({ err: String(err) }, 'Error in card action handler')
