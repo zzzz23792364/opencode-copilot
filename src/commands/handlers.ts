@@ -101,6 +101,18 @@ export function createCommandHandler(): CommandHandler {
       }
     }
 
+    // /sw — switch session: project picker → session picker (two-step card flow)
+    if (trimmed === '/sw') {
+      const projects = listProjects()
+      if (projects.length === 0) return { kind: 'reply', text: '📭 暂无 opencode 项目' }
+      const currentCwd = getCwd(db, chatId)
+      return {
+        kind: 'card',
+        card: null as any,
+        context: { actionType: 'sw_projects', projectList: projects, currentCwd },
+      }
+    }
+
     // /project <N> — select project directory
     if (trimmed.startsWith('/project ')) {
       const query = trimmed.slice('/project '.length).trim()
@@ -234,6 +246,7 @@ export function createCommandHandler(): CommandHandler {
         kind: 'reply',
         text: `**opencode-copilot**\n
 \`/new\` — 创建新会话
+\`/sw\` — 快速切换项目和会话（两步卡片）
 \`/projects\` — 查看所有项目目录
 \`/project <编号>\` — 选择项目目录
 \`/list\` — 查看当前项目的会话

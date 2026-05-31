@@ -225,6 +225,10 @@ async function handleProjectSelect(
   const dirName = directory.split('/').pop()
   const openMessageId = (action as any).open_message_id as string | undefined
 
+  // Check if this came from /sw (switch flow: project → session)
+  const sourceCard = openMessageId ? activeCards.get(openMessageId) : undefined
+  const isSwitchFlow = sourceCard?.actionType === 'sw_projects'
+
   // Ensure row exists with cwd
   const stmt = getSessionStmt(db)
   const existing = stmt.get.get(action.chatId)
@@ -234,7 +238,7 @@ async function handleProjectSelect(
     stmt.upsert.run(action.chatId, 'placeholder', 'default', null, directory, Date.now(), Date.now())
   }
 
-  log.info({ chatId: action.chatId, directory }, 'Card: project selected')
+  log.info({ chatId: action.chatId, directory, isSwitchFlow }, 'Card: project selected')
 
   if (openMessageId) {
     try {
@@ -246,8 +250,18 @@ async function handleProjectSelect(
         },
         elements: [{ tag: 'markdown', content: `项目: ${directory}\n用 /list 查看会话，或用 /project 选择其他项目` }],
       })
+      activeCards.delete(openMessageId)
     } catch (err) {
       log.warn({ err: String(err) }, 'Failed to patch project card')
+    }
+  }
+
+  // /sw flow: after project selection, auto-send session list card
+  if (isSwitchFlow) {
+    const sessions = listSessions(directory)
+    if (sessions.length > 0) {
+      const card = buildSessionListCard(action.chatId, sessions, dirName!)
+      await sendCard(adapter, action.chatId, card, { actionType: 'list_sessions' })
     }
   }
 }
