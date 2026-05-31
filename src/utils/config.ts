@@ -6,9 +6,10 @@ export interface Config {
   feishuAppId: string
   feishuAppSecret: string
   feishuBotOpenId?: string
+  feishuBotName?: string
   feishuVerificationToken?: string
   feishuWebhookPort?: number
-  opencodeSessionId?: string
+  opencodeCwd?: string
   logLevel?: string
 }
 
@@ -23,6 +24,7 @@ export function loadConfig(): Config {
     feishuAppId: env.FEISHU_APP_ID || '',
     feishuAppSecret: env.FEISHU_APP_SECRET || '',
     feishuBotOpenId: env.FEISHU_BOT_OPEN_ID || undefined,
+    feishuBotName: env.FEISHU_BOT_NAME || 'opencode-copilot',
     feishuVerificationToken: env.FEISHU_VERIFICATION_TOKEN || undefined,
     feishuWebhookPort: env.FEISHU_WEBHOOK_PORT ? parseInt(env.FEISHU_WEBHOOK_PORT, 10) : undefined,
     opencodeSessionId: env.OPENCODE_SESSION_ID || undefined,

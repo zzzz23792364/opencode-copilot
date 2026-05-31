@@ -499,7 +499,7 @@ export class FeishuAdapter implements IStreamableOutboundAdapter {
         .split('/')
         .pop()
         ?.replace(/\.\w+$/, '') ?? 'audio';
-    const opusPath = join(tmpdir(), `cat-cafe-feishu-${baseName}-${Date.now()}.opus`);
+    const opusPath = join(tmpdir(), `opencode-copilot-feishu-${baseName}-${Date.now()}.opus`);
     try {
       await execFileAsync('ffmpeg', ['-i', absPath, '-acodec', 'libopus', '-ac', '1', '-ar', '16000', '-y', opusPath], {
         timeout: 30_000,
@@ -550,7 +550,7 @@ export class FeishuAdapter implements IStreamableOutboundAdapter {
       const ext = contentType.includes('png') ? 'png' : contentType.includes('gif') ? 'gif' : 'jpg';
       const buffer = Buffer.from(await res.arrayBuffer());
       if (buffer.length === 0) return null;
-      const filePath = join(tmpdir(), `cat-cafe-feishu-dl-${Date.now()}.${ext}`);
+      const filePath = join(tmpdir(), `opencode-copilot-feishu-dl-${Date.now()}.${ext}`);
       await writeFile(filePath, buffer);
       this.log.info({ url, filePath, bytes: buffer.length }, '[FeishuAdapter] downloadToTempFile: success');
       return filePath;

@@ -52,7 +52,7 @@ async function main() {
   const streamingHook = new StreamingOutboundHook({
     adapters: new Map([['feishu', adapter]]),
     log,
-    catDisplayName: 'catcaffe',
+    catDisplayName: config.feishuBotName || 'opencode-copilot',
   })
 
   const outbound = createOutboundHandler(adapter, streamingHook)

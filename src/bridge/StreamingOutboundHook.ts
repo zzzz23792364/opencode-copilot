@@ -57,7 +57,7 @@ export class StreamingOutboundHook {
     try {
       const displayName = this.opts.catDisplayName || 'bot'
       const senderSuffix = connectorId === 'feishu' && senderHint?.name ? `→${senderHint.name}` : ''
-      const prefix = `【${displayName}🐱${senderSuffix}】`
+      const prefix = `【${displayName}${senderSuffix}】`
       const placeholderText = `${prefix}${pickReceiptLine(catId)}`
       const msgId = await adapter.sendPlaceholder(externalChatId, placeholderText)
       if (msgId) {
@@ -126,7 +126,7 @@ export class StreamingOutboundHook {
     if (elapsed < HEARTBEAT_MS - 500 || !session.firstChunk) return
 
     const elapsedSec = Math.floor((Date.now() - session.startTime) / 1000)
-    const content = `【${session.catDisplayName}🐱】⏳ 思考中... (${elapsedSec}s)`
+    const content = `【${session.catDisplayName}】⏳ 思考中... (${elapsedSec}s)`
     this.patchCard(session, content, { title: `⏳ 思考中... (${elapsedSec}s)`, template: 'grey' }, true)
       .then(() => this.opts.log.debug({ chatId: session.externalChatId }, '[StreamingOutbound] heartbeat PATCH'))
       .catch(() => { /* silent */ })
