@@ -1,3 +1,4 @@
+import 'dotenv/config'
 import { mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { join } from 'node:path'

@@ -2,6 +2,7 @@
  * Bridge lifecycle manager — start / stop / status / restart.
  * Usage: tsx scripts/manage.ts <start|stop|status|restart>
  */
+import 'dotenv/config'
 import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
