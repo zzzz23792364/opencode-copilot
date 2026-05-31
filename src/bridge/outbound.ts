@@ -61,6 +61,9 @@ export function createOutboundHandler(
           accumulated += chunk
           await streamingHook.onStreamChunk(connectorId, chatId, accumulated)
         },
+        onToolUse: async (toolName: string, state: 'running' | 'done' | 'error') => {
+          await streamingHook.onToolUse(chatId, toolName, state)
+        },
         onEnd: async (finalText: string) => {
           await streamingHook.onStreamEnd(connectorId, chatId, finalText)
         },

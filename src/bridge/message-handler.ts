@@ -47,9 +47,9 @@ export function createMessageHandler(
       }
     }
 
-    const { sessionId, cwd } = await sessionManager.getOrCreate(chatId)
+    const { sessionId, cwd, mode } = await sessionManager.getOrCreate(chatId)
 
-    log.info({ chatId, sessionId }, 'Running opencode (streaming)')
+    log.info({ chatId, sessionId, mode }, 'Running opencode (streaming)')
 
     // Start streaming: placeholder card appears immediately
     const streaming = await outbound.sendStreaming(chatId, 'feishu')
@@ -59,6 +59,8 @@ export function createMessageHandler(
       sessionId,
       cwd || undefined,
       (chunk) => { streaming.onChunk(chunk).catch(() => {}) },
+      (toolName) => { streaming.onToolUse(toolName, 'running').catch(() => {}) },
+      mode,
     )
 
     if (result.sessionId && result.sessionId !== sessionId) {

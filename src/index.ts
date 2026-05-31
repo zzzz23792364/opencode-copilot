@@ -85,15 +85,6 @@ async function main() {
         return
       }
 
-      // Group chat whitelist check
-      if (parsed.chatType === 'group') {
-        const allowed = db.query('SELECT 1 FROM allowed_groups WHERE chat_id = ?').get(parsed.chatId)
-        if (!allowed) {
-          log.info({ chatId: parsed.chatId }, 'Group not in whitelist, ignoring')
-          return
-        }
-      }
-
       // Add reaction as instant feedback
       try {
         await adapter.addReaction(parsed.messageId, 'THUMBSUP')

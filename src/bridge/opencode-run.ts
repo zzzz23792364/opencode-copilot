@@ -18,19 +18,22 @@ export interface OpenCodeRunOptions {
 }
 
 export function opencodeRun(opts: OpenCodeRunOptions & { prompt: string; sessionId?: string }): Promise<RunResult>
-export function opencodeRun(prompt: string, sessionId?: string, cwd?: string, onText?: (text: string) => void): Promise<RunResult>
+export function opencodeRun(prompt: string, sessionId?: string, cwd?: string, onText?: (text: string) => void, onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void, mode?: string): Promise<RunResult>
 export function opencodeRun(
   promptOrOpts: string | OpenCodeRunOptions,
   sessionId?: string,
   cwd?: string,
   onText?: (text: string) => void,
+  onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void,
+  mode?: string,
 ): Promise<RunResult> {
   const opts: OpenCodeRunOptions = typeof promptOrOpts === 'string'
-    ? { prompt: promptOrOpts, sessionId, cwd, onText }
+    ? { prompt: promptOrOpts, sessionId, cwd, onText, onToolUse }
     : promptOrOpts
 
   return new Promise((resolve, reject) => {
     const args = ['run', '-y', '--format', 'json']
+    if ((mode || 'build') === 'plan') args.push('--plan')
     if (opts.sessionId) args.push('--session', opts.sessionId)
     args.push(opts.prompt)
 
@@ -45,15 +48,15 @@ export function opencodeRun(
     let resolvedSessionId: string | undefined
     let fullText = ''
 
-    // Timeout: kill after 5 minutes to prevent zombie processes
+    // Timeout: kill after 10 minutes to prevent zombie processes
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true
         proc.kill('SIGKILL')
-        log.warn({ sessionId: opts.sessionId }, 'opencode timed out after 5min, killed')
+        log.warn({ sessionId: opts.sessionId }, 'opencode timed out after 10min, killed')
         resolve({ text: fullText || '(timeout)', sessionId: resolvedSessionId })
       }
-    }, 300_000)
+    }, 600_000)
 
     const rl = createInterface({ input: proc.stdout, crlfDelay: Infinity })
     let lastOnText = Promise.resolve()
