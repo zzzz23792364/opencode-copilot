@@ -222,7 +222,7 @@ export function createCommandHandler(): CommandHandler {
     if (trimmed === '/commands' || trimmed === '/help') {
       return {
         kind: 'reply',
-        text: `🐱 **opencode-copilot**\n
+        text: `**opencode-copilot**\n
 \`/new\` — 创建新会话
 \`/projects\` — 查看所有项目目录
 \`/project <编号>\` — 选择项目目录
