@@ -3,11 +3,10 @@
  * Usage: tsx scripts/manage.ts <start|stop|status|restart>
  */
 import 'dotenv/config'
-import { spawn } from 'node:child_process'
-import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs'
+import { spawn, execSync } from 'node:child_process'
+import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync, openSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import { openSync } from 'node:fs'
 
 const PID_DIR = join(homedir(), '.opencode-copilot')
 const PID_FILE = join(PID_DIR, 'bridge.pid')
@@ -36,17 +35,40 @@ function readPid(): number | null {
   }
 }
 
+function findExistingBridge(): number | null {
+  const pidFromFile = readPid()
+  if (pidFromFile && isRunning(pidFromFile)) return pidFromFile
+
+  try {
+    const out = execSync(
+      'ps -eo pid,args --no-headers 2>/dev/null | grep "tsx src/index.ts" | grep -v grep',
+      { encoding: 'utf-8', timeout: 3000 },
+    ).trim()
+    if (out) {
+      for (const line of out.split('\n')) {
+        const pid = parseInt(line.trim().split(/\s+/)[0], 10)
+        if (pid && pid !== process.pid) return pid
+      }
+    }
+  } catch { /* non-fatal */ }
+
+  return null
+}
+
+function sleep(ms: number) {
+  execSync(`sleep ${ms / 1000}`, { timeout: ms + 1000 })
+}
+
 function start() {
-  const existing = readPid()
-  if (existing && isRunning(existing)) {
-    console.log(`Bridge is already running (PID ${existing})`)
-    return
+  const existingPid = findExistingBridge()
+  if (existingPid) {
+    console.error(`Bridge is already running (PID ${existingPid}). Use "restart" or "stop" first.`)
+    process.exit(1)
   }
 
   ensureDir()
-  const appId = process.env.FEISHU_APP_ID || ''
-  const appSecret = process.env.FEISHU_APP_SECRET || ''
-
+  const appId = process.env.FEISHU_APP_ID
+  const appSecret = process.env.FEISHU_APP_SECRET
   if (!appId || !appSecret) {
     console.error('Error: FEISHU_APP_ID and FEISHU_APP_SECRET must be set')
     process.exit(1)
@@ -82,6 +104,22 @@ function stop() {
   try {
     process.kill(pid, 'SIGTERM')
     console.log(`Sent SIGTERM to PID ${pid}`)
+
+    let waited = 0
+    while (waited < 5000) {
+      if (!isRunning(pid)) {
+        console.log(`PID ${pid} exited`)
+        break
+      }
+      sleep(300)
+      waited += 300
+    }
+
+    if (isRunning(pid)) {
+      console.log(`PID ${pid} still alive after 5s, force killing`)
+      try { process.kill(pid, 'SIGKILL') } catch {}
+    }
+
     try { unlinkSync(PID_FILE) } catch {}
   } catch {
     console.error(`Failed to stop PID ${pid}`)
@@ -91,7 +129,13 @@ function stop() {
 function status() {
   const pid = readPid()
   if (!pid) {
-    console.log('Bridge: NOT RUNNING (no PID file)')
+    const orphanPid = findExistingBridge()
+    if (orphanPid) {
+      console.log(`Bridge: RUNNING (PID ${orphanPid}, orphaned — no PID file)`)
+      console.log(`Log: ${LOG_FILE}`)
+    } else {
+      console.log('Bridge: NOT RUNNING')
+    }
     return
   }
 
@@ -99,7 +143,12 @@ function status() {
     console.log(`Bridge: RUNNING (PID ${pid})`)
     console.log(`Log: ${LOG_FILE}`)
   } else {
-    console.log(`Bridge: STALE (PID ${pid} not found)`)
+    const orphanPid = findExistingBridge()
+    if (orphanPid) {
+      console.log(`Bridge: RUNNING (PID ${orphanPid}, PID file stale for ${pid})`)
+    } else {
+      console.log(`Bridge: STALE (PID ${pid} not found)`)
+    }
   }
 }
 
@@ -110,19 +159,7 @@ switch (cmd) {
   case 'status': status(); break
   case 'restart': {
     stop()
-    const oldPid = readPid()  // still in file? wait for it to die
-    if (oldPid) {
-      let waited = 0
-      const check = setInterval(() => {
-        waited += 100
-        if (!isRunning(oldPid) || waited >= 5000) {
-          clearInterval(check)
-          start()
-        }
-      }, 100)
-    } else {
-      start()
-    }
+    start()
     break
   }
   default:
