@@ -2,7 +2,7 @@
  * Bridge lifecycle manager — start / stop / status / restart.
  * Usage: tsx scripts/manage.ts <start|stop|status|restart>
  */
-import { spawn, execSync } from 'node:child_process'
+import { spawn } from 'node:child_process'
 import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -36,19 +36,6 @@ function readPid(): number | null {
 }
 
 function start() {
-  // Kill any zombie bridge instances from previous restarts
-  try {
-    const result = execSync('pgrep -f "tsx src/index"', { encoding: 'utf-8' }).trim()
-    if (result) {
-      for (const pidStr of result.split('\n')) {
-        const pid = parseInt(pidStr, 10)
-        if (pid && pid !== process.pid) {
-          try { process.kill(pid, 'SIGTERM') } catch {}
-        }
-      }
-    }
-  } catch {}
-
   const existing = readPid()
   if (existing && isRunning(existing)) {
     console.log(`Bridge is already running (PID ${existing})`)
@@ -120,7 +107,23 @@ switch (cmd) {
   case 'start': start(); break
   case 'stop': stop(); break
   case 'status': status(); break
-  case 'restart': stop(); setTimeout(start, 1000); break
+  case 'restart': {
+    stop()
+    const oldPid = readPid()  // still in file? wait for it to die
+    if (oldPid) {
+      let waited = 0
+      const check = setInterval(() => {
+        waited += 100
+        if (!isRunning(oldPid) || waited >= 5000) {
+          clearInterval(check)
+          start()
+        }
+      }, 100)
+    } else {
+      start()
+    }
+    break
+  }
   default:
     console.log('Usage: tsx scripts/manage.ts <start|stop|status|restart>')
 }
