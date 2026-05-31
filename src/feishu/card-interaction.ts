@@ -6,6 +6,19 @@ import type { FeishuAdapter, FeishuCardAction } from '../feishu/FeishuAdapter.js
 
 const log = createLogger('card-interact')
 
+/** Registry of active opencode runs: chatId → abort() */
+const activeRuns = new Map<string, () => void>()
+
+/** Register an abort function for the given chat. */
+export function registerRun(chatId: string, abort: () => void): void {
+  activeRuns.set(chatId, abort)
+}
+
+/** Unregister a run (called when normal completion). */
+export function unregisterRun(chatId: string): void {
+  activeRuns.delete(chatId)
+}
+
 /** In-memory store of active cards: open_message_id → context */
 const activeCards = new Map<string, { chatId: string; actionType: string; sessionList?: Array<{ id: string; title: string | null }> }>()
 
@@ -100,6 +113,28 @@ export async function handleCardAction(
   log.info({ actionType, openMessageId, senderId: action.senderId }, 'Handling card action')
 
   switch (actionType) {
+    case 'abort_stream': {
+      const chatId = value.chat_id as string || action.chatId
+      const abort = activeRuns.get(chatId)
+      if (abort) {
+        abort()
+        activeRuns.delete(chatId)
+        log.info({ chatId }, 'Card: stream aborted')
+        if (openMessageId) {
+          try {
+            await patchCard(adapter, openMessageId, {
+              header: {
+                title: { tag: 'plain_text' as const, content: '❌ 已终止' },
+                template: 'red' as const,
+              },
+              elements: [{ tag: 'markdown', content: '流式生成已终止' }],
+            })
+          } catch { /* non-fatal */ }
+        }
+      }
+      break
+    }
+
     case 'use_session': {
       const sessionId = value.session_id as string
       if (!sessionId) return

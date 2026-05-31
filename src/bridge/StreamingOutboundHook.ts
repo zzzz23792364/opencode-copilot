@@ -93,11 +93,24 @@ export class StreamingOutboundHook {
     session: StreamingSession,
     text: string,
     header?: { title: string; template: 'grey' | 'blue' | 'green' | 'red' },
+    showAbort = false,
   ): Promise<void> {
     const adapter = this.opts.adapters.get(session.connectorId) as any
     if (!adapter?.client?.im?.message?.patch || !session.platformMessageId) return
 
-    const card: any = { elements: [{ tag: 'markdown', content: text }] }
+    const elements: any[] = [{ tag: 'markdown', content: text }]
+    if (showAbort) {
+      elements.push({
+        tag: 'action',
+        actions: [{
+          tag: 'button',
+          text: { tag: 'plain_text', content: '⏹ 终止' },
+          type: 'danger',
+          value: { action: 'abort_stream', chat_id: session.externalChatId },
+        }],
+      })
+    }
+    const card: any = { elements }
     if (header) {
       card.config = { update_multi: true }
       card.header = { title: { tag: 'plain_text', content: header.title }, template: header.template }
@@ -114,7 +127,7 @@ export class StreamingOutboundHook {
 
     const elapsedSec = Math.floor((Date.now() - session.startTime) / 1000)
     const content = `【${session.catDisplayName}🐱】⏳ 思考中... (${elapsedSec}s)`
-    this.patchCard(session, content, { title: `⏳ 思考中... (${elapsedSec}s)`, template: 'grey' })
+    this.patchCard(session, content, { title: `⏳ 思考中... (${elapsedSec}s)`, template: 'grey' }, true)
       .then(() => this.opts.log.debug({ chatId: session.externalChatId }, '[StreamingOutbound] heartbeat PATCH'))
       .catch(() => { /* silent */ })
   }
@@ -131,7 +144,7 @@ export class StreamingOutboundHook {
 
     session.firstChunk = false
 
-    this.patchCard(session, `${accumulatedText} ▌`, { title: '💭 回复中...', template: 'blue' })
+    this.patchCard(session, `${accumulatedText} ▌`, { title: '💭 回复中...', template: 'blue' }, true)
       .then(() => {
         this.opts.log.debug({ externalChatId, len: accumulatedText.length, elapsed, delta }, '[StreamingOutbound] PATCH ok')
       })

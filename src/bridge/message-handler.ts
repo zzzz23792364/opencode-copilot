@@ -4,6 +4,7 @@ import type { SessionManager } from './session-manager.js'
 import type { MessageDedup } from './message-dedup.js'
 import type { OutboundHandler } from './outbound.js'
 import { opencodeRun } from './opencode-run.js'
+import { registerRun, unregisterRun } from '../feishu/card-interaction.js'
 import type { MediaService } from './media-service.js'
 
 const log = createLogger('message-handler')
@@ -53,13 +54,25 @@ export function createMessageHandler(
 
     const streaming = await outbound.sendStreaming(chatId, 'feishu')
 
-    const result = await opencodeRun(
+    let aborted = false
+
+    const result = await opencodeRun({
       prompt,
       sessionId,
-      cwd || undefined,
-      (chunk) => { streaming.onChunk(chunk).catch(() => {}) },
-      (toolName) => { streaming.onToolUse(toolName, 'running').catch(() => {}) },
-    )
+      cwd: cwd || undefined,
+      onText: (chunk) => { streaming.onChunk(chunk).catch(() => {}) },
+      onToolUse: (toolName) => { streaming.onToolUse(toolName, 'running').catch(() => {}) },
+      onStart: (abort) => {
+        registerRun(chatId, () => {
+          aborted = true
+          abort()
+        })
+      },
+    })
+
+    unregisterRun(chatId)
+
+    if (aborted) return
 
     if (result.sessionId && result.sessionId !== sessionId) {
       log.info({ old: sessionId, new: result.sessionId }, 'Session ID changed')

@@ -15,6 +15,8 @@ export interface OpenCodeRunOptions {
   cwd?: string
   onText?: (text: string) => void | Promise<void>
   onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void
+  /** Called after spawn — receives an abort() function to kill the process */
+  onStart?: (abort: () => void) => void
 }
 
 export function opencodeRun(opts: OpenCodeRunOptions & { prompt: string; sessionId?: string }): Promise<RunResult>
@@ -45,6 +47,16 @@ export function opencodeRun(
     let resolved = false
     let resolvedSessionId: string | undefined
     let fullText = ''
+
+    // Expose abort capability
+    if (opts.onStart) {
+      opts.onStart(() => {
+        if (resolved) return
+        resolved = true
+        clearTimeout(timeout)
+        proc.kill('SIGTERM')
+      })
+    }
 
     // Timeout: kill after 10 minutes to prevent zombie processes
     const timeout = setTimeout(() => {
