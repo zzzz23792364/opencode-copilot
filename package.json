@@ -5,7 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch run src/index.ts",
-    "start": "bun run src/index.ts",
+    "start": "bun run scripts/manage.ts start",
+    "stop": "bun run scripts/manage.ts stop",
+    "status": "bun run scripts/manage.ts status",
+    "restart": "bun run scripts/manage.ts restart",
     "test:e2e": "bun run scripts/e2e-test.ts",
     "test:ws": "bun run scripts/test-ws.ts"
   },
