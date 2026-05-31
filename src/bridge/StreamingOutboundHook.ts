@@ -45,6 +45,14 @@ export class StreamingOutboundHook {
     this.minDeltaChars = opts.minDeltaChars ?? DEFAULT_MIN_DELTA_CHARS
   }
 
+  /** Stop all heartbeat timers — called on graceful shutdown to allow exit. */
+  stopAllHeartbeats(): void {
+    for (const [, session] of this.sessions) {
+      if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
+    }
+    this.sessions.clear()
+  }
+
   async onStreamStart(
     externalChatId: string,
     connectorId: string,
