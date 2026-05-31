@@ -16,8 +16,7 @@ created: 2026-05-31
 |------|------|----------|
 | [`specs/`](specs/) | 技术规格与架构 | [`tech-architecture.md`](specs/tech-architecture.md) |
 | [`decisions/`](decisions/) | 技术决策记录 | [`D001-opencode-run-vs-serve.md`](decisions/D001-opencode-run-vs-serve.md) |
-| [`features/`](features/) | 功能规格（Feature Spec） | (待新增，模板见 `_templates/feature.md`) |
-| [`bugs/`](bugs/) | 问题修复记录 | (待新增，模板见 `_templates/bug.md`) |
+| [`bugs/`](bugs/) | 问题修复记录 | [`B001-invalid-y-flag.md`](bugs/B001-invalid-y-flag.md) |
 | [`guides/`](guides/) | 操作指南 | [`dev-setup.md`](guides/dev-setup.md) |
 | [`design/`](design/) | UI/UX 设计 | (暂无前端界面) |
 | [`discussions/`](discussions/) | 技术讨论与评审记录 | (待新增) |

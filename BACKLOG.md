@@ -2,7 +2,7 @@
 topics: [backlog]
 doc_kind: note
 created: 2026-05-31
-updated: 2026-05-31
+updated: 2026-06-01
 ---
 
 # Feature Roadmap
@@ -29,14 +29,11 @@ updated: 2026-05-31
 
 | ID | Name | Status | Owner | Link |
 |----|------|--------|-------|------|
-| **F001** | **流式输出打磨** | **todo** | TBD | minDeltaChars=200 对中文偏大导致更新缓慢；调整阈值 |
-| **F002** | **Webhook 模式** | **pending** | TBD | 支持 `FEISHU_CONNECTION_MODE=webhook`，URL 验证 |
-| **F003** | **群聊支持** | **pending** | TBD | @提及检测、群聊白名单、多用户 session 隔离 |
-| **F004** | **飞书交互卡片** | **in_progress** | TBD | /list 卡片已完成，扩展到 /projects /use |
+| — | _暂无活跃项_ | — | — | — |
 
 ---
 
-## Recently Done (2026-05-31)
+## Recently Done (2026-06-01)
 
 ### v0.1.0 — Initial Release
 

@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.2.0] - 2026-05-31
+
+### Added
+
+- **动态卡片 header**: 流式卡片根据状态切换 header（⏳/💭/✅），含耗时计数
+- **心跳机制**: 无文字时每 5s 更新卡片为 `⏳ 思考中... (Xs)`
+- **首段立即 PATCH**: 第一个文字块不等待节流，立即更新卡片
+- **终止按钮**: 流式卡片右下角 `⏹ 终止` 按钮，点击 kill 进程 + 卡片标记 `❌ 已终止`
+- **tool_use 通知**: opencode 工具调用时卡片显示 `🔧 执行中`
+- **`/projects` 交互卡片**: 项目选择按钮（点击切换目录）
+- **命令扩展**: `/abort`、`/unbind`、`/where`、`/status`、`/commands`
+
+### Changed
+
+- **minDeltaChars**: 200 → 50（流式更新更频繁）
+- **editMessage**: 改为 fire-and-forget（不阻塞管道）
+- **心跳超时**: 5min → 10min
+- **默认模型**: deepseek-v4-pro (opencode-go provider)
+- **移除 poller**: TUI→飞书转发已移除（防止消息循环混淆）
+
+### Fixed
+
+- **B001**: `-y` 标志无效导致 opencode 返回 `(no response)` — 已移除
+- **B002**: `--plan` 标志在 opencode v1.15.13 不存在 — 相关命令已回退
+- **B003**: Poller 误转发飞书消息 — 移除 poller
+- **B004**: `editMessage` "🐱 回复中..." header 覆盖卡片 — 改用 SDK 直接 PATCH
+
+### Docs
+
+- 新增 `docs/bugs/` 4 篇踩坑记录
+- 文档体系对齐 escape-pilot 结构（23 文件）
+
+---
+
 ## [0.1.0] - 2026-05-31
 
 ### Added
