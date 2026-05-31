@@ -19,7 +19,9 @@ function openReadonly(): Database {
 export function listProjects(): Array<{ directory: string; count: number }> {
   const db = openReadonly()
   try {
-    const rows = db.query('SELECT directory, COUNT(*) as count FROM session WHERE directory IS NOT NULL GROUP BY directory ORDER BY count DESC').all() as Array<{ directory: string; count: number }>
+    const rows = db.query(
+      'SELECT directory, COUNT(*) as count FROM session WHERE directory IS NOT NULL GROUP BY directory ORDER BY count DESC'
+    ).all() as Array<{ directory: string; count: number }>
     return rows
   } finally {
     db.close()
@@ -31,9 +33,9 @@ export function listSessions(directory: string, limit = 20): OpenSession[] {
   const db = openReadonly()
   try {
     const rows = db.query(
-      'SELECT id, title, directory FROM session WHERE directory = ? ORDER BY updated DESC LIMIT ?'
-    ).all(limit ? directory : undefined, limit || undefined)
-    return (rows as OpenSession[])
+      'SELECT id, title, directory FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT ?'
+    ).all(directory, limit) as OpenSession[]
+    return rows
   } finally {
     db.close()
   }

@@ -24,7 +24,7 @@ export function createSessionManager(db: Database): SessionManager {
 
   async function getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null }> {
     const existing = getSession(feishuKey)
-    if (existing) {
+    if (existing && existing.session_id !== 'placeholder') {
       stmt.touch.run(Date.now(), feishuKey)
       const resolvedCwd = existing.opencode_cwd || cwd || null
       log.info({ feishuKey, sessionId: existing.session_id }, 'Reusing existing session')
