@@ -12,24 +12,24 @@ import { createMessageDedup } from './bridge/message-dedup.js'
 import { createOutboundHandler } from './bridge/outbound.js'
 import { createMessageHandler } from './bridge/message-handler.js'
 import { StreamingOutboundHook } from './bridge/StreamingOutboundHook.js'
+import { MediaService } from './bridge/media-service.js'
 import { createCommandHandler } from './commands/handlers.js'
 import { startPoller } from './feishu-poller.js'
-import type { FeishuMessageEvent } from './feishu/types.js'
+import type { FeishuInboundMessage, FeishuCardAction } from './feishu/FeishuAdapter.js'
+import type { Database } from 'bun:sqlite'
 
 const log = createLogger('index')
 
 async function main() {
   log.info('Starting opencode-copilot...')
 
-  // Load config
   const config = loadConfig()
   log.info({ appId: config.feishuAppId.slice(0, 8) + '...' }, 'Config loaded')
 
   // Initialize DB
   const dbDir = join(homedir(), '.opencode-copilot')
   await mkdir(dbDir, { recursive: true })
-  const dbPath = join(dbDir, 'sessions.db')
-  const db = createDatabase(dbPath)
+  const db = createDatabase(join(dbDir, 'sessions.db'))
 
   // Create Feishu adapter
   const adapter = new FeishuAdapter(config.feishuAppId, config.feishuAppSecret, log)
@@ -48,7 +48,6 @@ async function main() {
   const dedup = createMessageDedup(db)
   const commandHandler = createCommandHandler()
 
-  // Create streaming hook
   const streamingHook = new StreamingOutboundHook({
     adapters: new Map([['feishu', adapter]]),
     log,
@@ -56,42 +55,58 @@ async function main() {
   })
 
   const outbound = createOutboundHandler(adapter, streamingHook)
-  const messageHandler = createMessageHandler(sessionManager, dedup, outbound)
+  const mediaService = new MediaService(adapter)
+  await mediaService.ensureDir()
+  const messageHandler = createMessageHandler(sessionManager, dedup, outbound, mediaService)
 
-  // Handle incoming message
-  async function onMessage(event: FeishuMessageEvent) {
+  // ── Unified onMessage: parse via adapter.parseEvent() ──
+
+  async function onMessage(data: Record<string, unknown>) {
     try {
-      const chatId = event.chat_id
-      const messageId = event.message_id
-
-      // Parse text
-      let text = ''
-      const msgType = event.message.message_type
-      if (msgType === 'text') {
-        try {
-          text = JSON.parse(event.message.content).text ?? ''
-        } catch {
-          text = event.message.content
-        }
-      } else {
-        text = `[${msgType}]`
+      // Wrap raw WS data in envelope format expected by parseEvent
+      const envelope = {
+        header: { event_type: 'im.message.receive_v1' },
+        event: data,
       }
 
-      if (!text) return
-
-      // Check commands
-      const cmdResult = await commandHandler.handle(text, chatId, sessionManager, db)
-      if (cmdResult) {
-        // Command handled — send result directly
-        await adapter.sendReply(chatId, cmdResult.text)
+      const parsed = adapter.parseEvent(envelope)
+      if (!parsed) {
+        log.info({ chatId: (data as any)?.message?.chat_id }, 'Event skipped by parseEvent (unsupported/not-mentioned)')
         return
       }
 
-      // Regular message — process through pipeline
-      await messageHandler.handle(event)
+      // Add reaction as instant feedback
+      try {
+        await adapter.addReaction(parsed.messageId, 'THUMBSUP')
+      } catch {
+        // non-fatal
+      }
+
+      // Check commands
+      const cmdResult = await commandHandler.handle(
+        parsed.text,
+        parsed.chatId,
+        parsed.senderId,
+        sessionManager,
+        db,
+      )
+      if (cmdResult) {
+        outbound.sendFormatted(parsed.chatId, cmdResult.text, '命令结果').catch(() => {})
+        return
+      }
+
+      // Regular message pipeline
+      await messageHandler.handle(parsed)
     } catch (err) {
       log.error({ err: String(err) }, 'Unhandled error in onMessage')
     }
+  }
+
+  // ── Card action handler ──
+
+  async function onCardAction(action: FeishuCardAction) {
+    log.info({ senderId: action.senderId, actionValue: action.actionValue }, 'Card action received')
+    // Future: route card actions to appropriate handlers
   }
 
   // Start Feishu WS
@@ -99,6 +114,7 @@ async function main() {
     appId: config.feishuAppId,
     appSecret: config.feishuAppSecret,
     onMessage,
+    onCardAction,
   })
   ws.start()
 

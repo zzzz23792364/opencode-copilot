@@ -1,10 +1,10 @@
 /**
  * Streaming Outbound Hook — adapted from clowder-local.
  * Manages placeholder → PATCH update → finalize lifecycle for streaming cards.
- * Simplified for single-chat use (one Feishu chat → one opencode session).
  */
 import type { Logger } from '../feishu/types.js'
 import type { IStreamableOutboundAdapter } from '../feishu/FeishuAdapter.js'
+import { pickReceiptLine } from '../feishu/feishu-receipt-lines.js'
 
 const DEFAULT_UPDATE_INTERVAL_MS = 2000
 const DEFAULT_MIN_DELTA_CHARS = 200
@@ -14,6 +14,7 @@ interface StreamingSession {
   platformMessageId: string
   lastUpdateAt: number
   lastContentLength: number
+  catDisplayName: string
 }
 
 export interface StreamingOutboundHookOptions {
@@ -22,6 +23,12 @@ export interface StreamingOutboundHookOptions {
   readonly catDisplayName?: string
   readonly updateIntervalMs?: number
   readonly minDeltaChars?: number
+}
+
+/** Sender hint for group @mention prefix (AC-A8 in clowder-local) */
+export interface SenderHint {
+  id: string
+  name?: string
 }
 
 export class StreamingOutboundHook {
@@ -35,13 +42,22 @@ export class StreamingOutboundHook {
     this.minDeltaChars = opts.minDeltaChars ?? DEFAULT_MIN_DELTA_CHARS
   }
 
-  async onStreamStart(externalChatId: string, connectorId: string): Promise<void> {
+  async onStreamStart(
+    externalChatId: string,
+    connectorId: string,
+    senderHint?: SenderHint,
+    catId?: string,
+  ): Promise<void> {
     const adapter = this.opts.adapters.get(connectorId)
     if (!adapter?.sendPlaceholder) return
 
     try {
       const displayName = this.opts.catDisplayName || 'bot'
-      const placeholderText = `【${displayName}】🐱 思考中...`
+      // F157: Cat-personality receipt line for Feishu
+      // AC-A8: Group chat @mention — add sender name to prefix
+      const senderSuffix = connectorId === 'feishu' && senderHint?.name ? `→${senderHint.name}` : ''
+      const prefix = `【${displayName}🐱${senderSuffix}】`
+      const placeholderText = `${prefix}${pickReceiptLine(catId)}`
       const msgId = await adapter.sendPlaceholder(externalChatId, placeholderText)
       if (msgId) {
         this.sessions.set(externalChatId, {
@@ -49,6 +65,7 @@ export class StreamingOutboundHook {
           platformMessageId: msgId,
           lastUpdateAt: Date.now(),
           lastContentLength: 0,
+          catDisplayName: displayName,
         })
       }
     } catch (err) {
@@ -96,7 +113,11 @@ export class StreamingOutboundHook {
     }
   }
 
-  async cleanupPlaceholders(connectorId: string, externalChatId: string, catDisplayName?: string): Promise<void> {
+  /**
+   * F157: Prefer finalizeStreamCard (edit to "✅ 已回复") over deleteMessage
+   * to avoid Feishu's "recalled a message" notification.
+   */
+  async cleanupPlaceholders(connectorId: string, externalChatId: string): Promise<void> {
     const session = this.pendingCleanup.get(externalChatId)
     if (!session) return
     this.pendingCleanup.delete(externalChatId)
@@ -106,7 +127,7 @@ export class StreamingOutboundHook {
 
     try {
       if (adapter?.finalizeStreamCard) {
-        await adapter.finalizeStreamCard(session.externalChatId, session.platformMessageId, catDisplayName || 'bot')
+        await adapter.finalizeStreamCard(session.externalChatId, session.platformMessageId, session.catDisplayName)
       } else if (adapter?.deleteMessage) {
         await adapter.deleteMessage(session.platformMessageId)
       }

@@ -1,52 +1,55 @@
 import * as Lark from '@larksuiteoapi/node-sdk'
 import { createLogger } from '../utils/logger.js'
-import type { FeishuMessageEvent } from './types.js'
+import type { FeishuCardAction } from './FeishuAdapter.js'
 
 const log = createLogger('feishu-ws')
 
 export interface WSClientDeps {
   appId: string
   appSecret: string
-  onMessage: (event: FeishuMessageEvent) => Promise<void>
+  /** Raw WS event for im.message.receive_v1 — wrapped as { header, event } envelope */
+  onMessage: (data: Record<string, unknown>) => Promise<void>
+  onCardAction?: (action: FeishuCardAction) => Promise<void>
 }
 
 export function createWSClient(deps: WSClientDeps) {
-  const { appId, appSecret, onMessage } = deps
+  const { appId, appSecret, onMessage, onCardAction } = deps
 
   const eventDispatcher = new Lark.EventDispatcher({})
 
   eventDispatcher.register({
     'im.message.receive_v1': async (data: any) => {
       try {
-        const msg = data.message
         const sender = data.sender
         if (sender?.sender_type === 'app') return
 
-        const event: FeishuMessageEvent = {
-          event_id: data.event_id ?? msg.message_id ?? `ws_${Date.now()}`,
-          chat_id: msg.chat_id,
-          chat_type: msg.chat_type as 'p2p' | 'group',
-          message_id: msg.message_id,
-          root_id: msg.root_id,
-          parent_id: msg.parent_id,
-          sender: {
-            sender_id: sender?.sender_id ?? { open_id: 'unknown' },
-            sender_type: sender?.sender_type ?? 'unknown',
-            tenant_key: sender?.tenant_key ?? 'unknown',
-          },
-          message: {
-            message_type: msg.message_type,
-            content: msg.content,
-          },
-          mentions: msg.mentions,
-        }
-
-        await onMessage(event)
+        await onMessage(data)
       } catch (err) {
         log.error({ err: String(err) }, 'Error handling WS message')
       }
     },
   })
+
+  if (onCardAction) {
+    eventDispatcher.register({
+      'card.action.trigger': async (data: any) => {
+        try {
+          const action: FeishuCardAction = {
+            chatId: '',
+            senderId: data.operator?.open_id ?? 'unknown',
+            actionValue: data.action?.value ?? {},
+          }
+          void onCardAction(action).catch((err) => {
+            log.error({ err: String(err) }, 'Error in card action handler')
+          })
+          return { toast: { type: 'success', content: '✅ 已收到' } }
+        } catch (err) {
+          log.error({ err: String(err) }, 'Error handling card action')
+          return {}
+        }
+      },
+    })
+  }
 
   const wsClient = new Lark.WSClient({
     appId,

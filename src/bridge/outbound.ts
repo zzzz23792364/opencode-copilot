@@ -6,6 +6,7 @@ const log = createLogger('outbound')
 
 export interface OutboundHandler {
   sendText(chatId: string, text: string): Promise<void>
+  sendFormatted(chatId: string, body: string, subtitle?: string): Promise<void>
   sendStreaming(chatId: string, connectorId: string): Promise<{
     onChunk: (text: string) => Promise<void>
     onEnd: (finalText: string) => Promise<void>
@@ -18,20 +19,32 @@ export function createOutboundHandler(
   streamingHook?: StreamingOutboundHook,
 ): OutboundHandler {
   async function sendText(chatId: string, text: string): Promise<void> {
-    log.info({ chatId, textLen: text.length }, 'Sending text reply')
-    await adapter.sendReply(chatId, text)
-    log.info({ chatId }, 'Text reply sent')
+    await sendFormatted(chatId, text)
+  }
+
+  async function sendFormatted(chatId: string, body: string, subtitle?: string): Promise<void> {
+    const footer = new Date().toLocaleString('zh-CN', { timeZone: 'Asia/Shanghai' })
+    log.info({ chatId, bodyLen: body.length }, 'Sending formatted reply')
+
+    await adapter.sendFormattedReply(chatId, {
+      header: 'opencode-copilot',
+      subtitle: subtitle ?? '',
+      body,
+      footer,
+    })
+    log.info({ chatId }, 'Formatted reply sent')
   }
 
   return {
     sendText,
+    sendFormatted,
 
     async sendStreaming(chatId: string, connectorId: string) {
       if (!streamingHook) {
         return {
           onChunk: async (t: string) => {},
           onEnd: async (finalText: string) => {
-            await sendText(chatId, finalText)
+            await sendFormatted(chatId, finalText)
           },
           onError: (err: Error) => {
             log.warn({ err: String(err), chatId }, 'Streaming not available, error ignored')
@@ -39,7 +52,6 @@ export function createOutboundHandler(
         }
       }
 
-      // Start placeholder card
       await streamingHook.onStreamStart(chatId, connectorId)
 
       let accumulated = ''
@@ -50,7 +62,7 @@ export function createOutboundHandler(
         },
         onEnd: async (finalText: string) => {
           await streamingHook.onStreamEnd(connectorId, chatId, finalText)
-          await streamingHook.cleanupPlaceholders(connectorId, chatId, 'bot')
+          await streamingHook.cleanupPlaceholders(connectorId, chatId)
         },
         onError: (err: Error) => {
           log.warn({ err: String(err), chatId }, 'Streaming error')
