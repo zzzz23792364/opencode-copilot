@@ -1,4 +1,10 @@
-# opencode-copilot — Spec
+---
+topics: [spec, architecture]
+doc_kind: spec
+created: 2026-05-31
+---
+
+# opencode-copilot — Technical Architecture
 
 ## Objective
 

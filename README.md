@@ -108,4 +108,4 @@ cp .env.example .env  # 填入你的 App ID/Secret
 npm run dev            # 前台运行（watch 模式）
 ```
 
-详细设计文档见 [docs/SPEC.md](docs/SPEC.md)。
+详细设计文档见 [docs/specs/tech-architecture.md](docs/specs/tech-architecture.md)，文档索引见 [docs/README.md](docs/README.md)。
