@@ -152,7 +152,6 @@ async function main() {
   function shutdown() {
     if (shuttingDown) return
     shuttingDown = true
-    streamingHook.stopAllHeartbeats()
     log.info({ inflightCount }, 'Shutting down...')
 
     // Force exit after 30s if requests don't finish

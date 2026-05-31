@@ -53,7 +53,6 @@ export function createOutboundHandler(
       }
 
       await streamingHook.onStreamStart(chatId, connectorId)
-      streamingHook.startHeartbeat(chatId)
 
       let accumulated = ''
       return {

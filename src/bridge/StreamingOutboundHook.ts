@@ -8,7 +8,6 @@ import { pickReceiptLine } from '../feishu/feishu-receipt-lines.js'
 
 const DEFAULT_UPDATE_INTERVAL_MS = 2000
 const DEFAULT_MIN_DELTA_CHARS = 50
-const HEARTBEAT_MS = 5000
 
 interface StreamingSession {
   readonly externalChatId: string
@@ -19,7 +18,6 @@ interface StreamingSession {
   startTime: number
   catDisplayName: string
   firstChunk: boolean
-  heartbeatTimer: ReturnType<typeof setInterval> | null
 }
 
 export interface StreamingOutboundHookOptions {
@@ -45,14 +43,6 @@ export class StreamingOutboundHook {
     this.minDeltaChars = opts.minDeltaChars ?? DEFAULT_MIN_DELTA_CHARS
   }
 
-  /** Stop all heartbeat timers — called on graceful shutdown to allow exit. */
-  stopAllHeartbeats(): void {
-    for (const [, session] of this.sessions) {
-      if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
-    }
-    this.sessions.clear()
-  }
-
   async onStreamStart(
     externalChatId: string,
     connectorId: string,
@@ -69,7 +59,7 @@ export class StreamingOutboundHook {
       const placeholderText = `${prefix}${pickReceiptLine(catId)}`
       const msgId = await adapter.sendPlaceholder(externalChatId, placeholderText)
       if (msgId) {
-        const session: StreamingSession = {
+        this.sessions.set(externalChatId, {
           externalChatId,
           connectorId,
           platformMessageId: msgId,
@@ -78,23 +68,11 @@ export class StreamingOutboundHook {
           startTime: Date.now(),
           catDisplayName: displayName,
           firstChunk: true,
-          heartbeatTimer: null,
-        }
-        this.sessions.set(externalChatId, session)
+        })
       }
     } catch (err) {
       this.opts.log.warn({ err: String(err), connectorId }, '[StreamingOutbound] sendPlaceholder failed')
     }
-  }
-
-  /** Start heartbeat timer — called by outbound after placeholder is sent. */
-  startHeartbeat(externalChatId: string): void {
-    const session = this.sessions.get(externalChatId)
-    if (!session || session.heartbeatTimer) return
-
-    session.heartbeatTimer = setInterval(() => {
-      this.doHeartbeat(session)
-    }, HEARTBEAT_MS)
   }
 
   private async patchCard(
@@ -129,17 +107,6 @@ export class StreamingOutboundHook {
     })
   }
 
-  private doHeartbeat(session: StreamingSession): void {
-    const elapsed = Date.now() - session.lastUpdateAt
-    if (elapsed < HEARTBEAT_MS - 500 || !session.firstChunk) return
-
-    const elapsedSec = Math.floor((Date.now() - session.startTime) / 1000)
-    const content = `【${session.catDisplayName}】⏳ 思考中... (${elapsedSec}s)`
-    this.patchCard(session, content, { title: `⏳ 思考中... (${elapsedSec}s)`, template: 'grey' }, true)
-      .then(() => this.opts.log.debug({ chatId: session.externalChatId }, '[StreamingOutbound] heartbeat PATCH'))
-      .catch(() => { /* silent */ })
-  }
-
   async onStreamChunk(connectorId: string, externalChatId: string, accumulatedText: string): Promise<void> {
     const session = this.sessions.get(externalChatId)
     if (!session) return
@@ -166,7 +133,6 @@ export class StreamingOutboundHook {
   async onStreamEnd(connectorId: string, externalChatId: string, finalText: string): Promise<void> {
     const session = this.sessions.get(externalChatId)
     if (!session) return
-    if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
     this.sessions.delete(externalChatId)
 
     const duration = Math.floor((Date.now() - session.startTime) / 1000)
@@ -178,8 +144,6 @@ export class StreamingOutboundHook {
   }
 
   async cleanupPlaceholders(_connectorId: string, externalChatId: string): Promise<void> {
-    const session = this.sessions.get(externalChatId)
-    if (session?.heartbeatTimer) clearInterval(session.heartbeatTimer)
     this.sessions.delete(externalChatId)
   }
 }
