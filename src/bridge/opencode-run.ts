@@ -33,7 +33,7 @@ export function opencodeRun(
     : promptOrOpts
 
   return new Promise((resolve, reject) => {
-    const args = ['run', '-y', '--format', 'json']
+    const args = ['run', '--format', 'json']
     if (opts.sessionId) args.push('--session', opts.sessionId)
     args.push(opts.prompt)
 
