@@ -1,8 +1,28 @@
 {
   "name": "opencode-copilot",
   "version": "0.1.0",
-  "private": true,
+  "description": "Feishu ↔ opencode TUI bidirectional bridge — share the same opencode session between your terminal and Feishu",
+  "keywords": ["opencode", "feishu", "lark", "飞书", "bridge", "chatbot", "ai"],
+  "homepage": "https://github.com/zzzz23792364/opencode-copilot#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zzzz23792364/opencode-copilot.git"
+  },
+  "license": "MIT",
   "type": "module",
+  "bin": {
+    "opencode-copilot": "bin/opencode-copilot.ts"
+  },
+  "files": [
+    "src/",
+    "bin/",
+    "scripts/manage.ts",
+    "README.md",
+    ".env.example"
+  ],
+  "engines": {
+    "bun": ">=1.1.0"
+  },
   "scripts": {
     "start": "bun run scripts/manage.ts start",
     "stop": "bun run scripts/manage.ts stop",
