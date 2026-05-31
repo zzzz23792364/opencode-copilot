@@ -1,12 +1,15 @@
 import type { Database } from 'bun:sqlite'
+import { spawn } from 'node:child_process'
 import { getSessionStmt } from '../utils/db.js'
 import { createLogger } from '../utils/logger.js'
 import type { SessionManager } from '../bridge/session-manager.js'
-import type { FeishuAdapter } from '../feishu/FeishuAdapter.js'
 
 const log = createLogger('commands')
 
-export type CommandResult = { text: string } | null
+export type CommandResult =
+  | { kind: 'reply'; text: string }
+  | { kind: 'thread'; sessionId: string; message: string }
+  | null
 
 export interface CommandHandler {
   handle(text: string, chatId: string, senderId: string, sessionManager: SessionManager, db: Database): Promise<CommandResult>
@@ -20,6 +23,28 @@ export function createCommandHandler(): CommandHandler {
     return stmtCache.get(db)!
   }
 
+  function bindSession(db: Database, chatId: string, sessionId: string) {
+    getStmt(db).upsert.run(chatId, sessionId, 'default', null, Date.now(), Date.now())
+  }
+
+  /** Query opencode for all sessions with titles. Returns { id, title }[]. */
+  async function getOpendcodeSessions(): Promise<Array<{ id: string; title: string }>> {
+    return new Promise((resolve) => {
+      const proc = spawn('opencode', ['session', 'list', '--format', 'json'])
+      let out = ''
+      proc.stdout.on('data', (chunk: Buffer) => { out += chunk.toString() })
+      proc.on('close', () => {
+        try {
+          const sessions = JSON.parse(out) as Array<{ id: string; title: string }>
+          resolve(sessions)
+        } catch {
+          resolve([])
+        }
+      })
+      proc.on('error', () => resolve([]))
+    })
+  }
+
   async function handle(
     text: string,
     chatId: string,
@@ -31,20 +56,19 @@ export function createCommandHandler(): CommandHandler {
 
     // /new
     if (trimmed === '/new' || trimmed.startsWith('/new ')) {
-      const stmt = getStmt(db)
-      stmt.remove.run(chatId)
+      getStmt(db).remove.run(chatId)
       const sessionId = await sessionManager.getOrCreate(chatId)
       log.info({ chatId, sessionId }, 'Created new session via /new')
-      return { text: `✅ 新会话已创建\nSession: ${sessionId}` }
+      return { kind: 'reply', text: `✅ 新会话已创建\nSession: ${sessionId}` }
     }
 
-    // /list — alias for /sessions with numbered output
+    // /list /sessions
     if (trimmed === '/list' || trimmed === '/sessions') {
       const stmt = getStmt(db)
       const sessions = stmt.list.all() as Array<{
         feishu_key: string; session_id: string; last_active: number
       }>
-      if (sessions.length === 0) return { text: '📭 暂无活动会话\n使用 /new 创建新会话' }
+      if (sessions.length === 0) return { kind: 'reply', text: '📭 暂无活动会话\n使用 /new 创建新会话' }
       const lines = sessions.map((s, i) => {
         const time = new Date(s.last_active).toLocaleTimeString('zh-CN')
         const shortId = s.session_id.slice(0, 12) + '...'
@@ -52,85 +76,115 @@ export function createCommandHandler(): CommandHandler {
         return `[${i + 1}] ${shortId}  (${chat})  ${time}`
       })
       return {
-        text: `📋 活动会话 (${sessions.length}):\n${lines.join('\n')}\n\n用 /use <编号> 绑定`,
+        kind: 'reply',
+        text: `📋 活动会话 (${sessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|ID|标题> 绑定`,
       }
     }
 
-    // /connect <session_id> — direct bind
-    if (trimmed.startsWith('/connect ')) {
-      const sessionId = trimmed.slice('/connect '.length).trim()
-      if (!sessionId.startsWith('ses_')) return { text: '❌ 无效的 session ID' }
+    // /thread <id> <message> — bind + send in one shot
+    const threadMatch = trimmed.match(/^\/thread\s+(\S+)\s+(.+)$/s)
+    if (threadMatch) {
+      const [, idPart, msg] = threadMatch
       const stmt = getStmt(db)
-      stmt.upsert.run(chatId, sessionId, 'default', null, Date.now(), Date.now())
-      return { text: `✅ 已绑定到 Session: ${sessionId}` }
+      const sessions = stmt.list.all() as Array<{ feishu_key: string; session_id: string }>
+
+      const resolved = resolveSession(sessions, idPart)
+      if (!resolved) {
+        // Try opencode title search
+        const external = await getOpendcodeSessions()
+        const titleMatch = external.find(s => s.title.toLowerCase().includes(idPart.toLowerCase()))
+        if (titleMatch) {
+          bindSession(db, chatId, titleMatch.id)
+          return { kind: 'thread', sessionId: titleMatch.id, message: msg }
+        }
+        return { kind: 'reply', text: `❌ 未找到匹配: "${idPart}"\n用 /list 查看可用会话` }
+      }
+
+      bindSession(db, chatId, resolved)
+      return { kind: 'thread', sessionId: resolved, message: msg }
     }
 
-    // /use <N> | <session_id> | <prefix> — smart bind
+    // /connect <session_id>
+    if (trimmed.startsWith('/connect ')) {
+      const sessionId = trimmed.slice('/connect '.length).trim()
+      if (!sessionId.startsWith('ses_')) return { kind: 'reply', text: '❌ 无效的 session ID' }
+      bindSession(db, chatId, sessionId)
+      return { kind: 'reply', text: `✅ 已绑定到 Session: ${sessionId}` }
+    }
+
+    // /use <N> | <session_id> | <prefix> | <title substring>
     if (trimmed.startsWith('/use ')) {
       const query = trimmed.slice('/use '.length).trim()
       const stmt = getStmt(db)
-      const sessions = stmt.list.all() as Array<{
-        feishu_key: string; session_id: string; last_active: number
-      }>
+      const sessions = stmt.list.all() as Array<{ feishu_key: string; session_id: string }>
 
       // Try numeric index
       const index = parseInt(query, 10)
       if (index >= 1 && index <= sessions.length) {
         const sessionId = sessions[index - 1].session_id
-        stmt.upsert.run(chatId, sessionId, 'default', null, Date.now(), Date.now())
-        return { text: `✅ 已绑定到 #${index}: ${sessionId}` }
+        bindSession(db, chatId, sessionId)
+        return { kind: 'reply', text: `✅ 已绑定到 #${index}: ${sessionId}` }
       }
 
       // Try exact ID match
       if (query.startsWith('ses_')) {
-        stmt.upsert.run(chatId, query, 'default', null, Date.now(), Date.now())
-        return { text: `✅ 已绑定到 Session: ${query}` }
+        bindSession(db, chatId, query)
+        return { kind: 'reply', text: `✅ 已绑定到 Session: ${query}` }
       }
 
-      // Try prefix match
-      const matches = sessions.filter(s => s.session_id.startsWith(query))
-      if (matches.length === 1) {
-        stmt.upsert.run(chatId, matches[0].session_id, 'default', null, Date.now(), Date.now())
-        return { text: `✅ 已绑定到 Session: ${matches[0].session_id}` }
+      // Try prefix match on session_id
+      const byPrefix = sessions.filter(s => s.session_id.startsWith(query))
+      if (byPrefix.length === 1) {
+        bindSession(db, chatId, byPrefix[0].session_id)
+        return { kind: 'reply', text: `✅ 已绑定到 Session: ${byPrefix[0].session_id}` }
       }
-      if (matches.length > 1) {
-        return { text: `❌ 多个匹配，请用完整 ID:\n${matches.map(s => `  ${s.session_id}`).join('\n')}` }
+      if (byPrefix.length > 1) {
+        return { kind: 'reply', text: `❌ 多个匹配:\n${byPrefix.map(s => '  ' + s.session_id).join('\n')}` }
       }
 
-      return { text: `❌ 未找到匹配: "${query}"\n用 /list 查看可用会话，或用 /connect ses_xxx 直接绑定` }
+      // Try title match by querying opencode
+      const external = await getOpendcodeSessions()
+      const titleMatch = external.find(s => s.title.toLowerCase().includes(query.toLowerCase()))
+      if (titleMatch) {
+        bindSession(db, chatId, titleMatch.id)
+        return { kind: 'reply', text: `✅ 已绑定到 "${titleMatch.title}": ${titleMatch.id}` }
+      }
+
+      return { kind: 'reply', text: `❌ 未找到匹配: "${query}"\n用 /list 查看可用会话，或用标题匹配` }
     }
 
     // /unbind
     if (trimmed === '/unbind') {
-      const stmt = getStmt(db)
       const existing = sessionManager.getSession(chatId)
-      if (!existing) return { text: '❌ 当前对话没有绑定的会话' }
-      stmt.remove.run(chatId)
-      return { text: `✅ 已取消绑定\n原 Session: ${existing.session_id}` }
+      if (!existing) return { kind: 'reply', text: '❌ 当前对话没有绑定的会话' }
+      getStmt(db).remove.run(chatId)
+      return { kind: 'reply', text: `✅ 已取消绑定\n原 Session: ${existing.session_id}` }
     }
 
-    // /where — show current binding
+    // /where /status
     if (trimmed === '/where' || trimmed === '/status') {
       const existing = sessionManager.getSession(chatId)
-      if (!existing) return { text: '❌ 当前对话没有绑定的会话\n\n用 /new 创建新会话 或 /connect <id> 绑定已有会话' }
+      if (!existing) return { kind: 'reply', text: '❌ 当前对话没有绑定的会话\n\n用 /new 创建新会话 或 /use <id> 绑定已有会话' }
       const time = new Date(existing.last_active).toLocaleString('zh-CN')
       return {
+        kind: 'reply',
         text: `📍 当前绑定\nSession: ${existing.session_id}\n最近活跃: ${time}\nChat: ${chatId.slice(0, 16)}...`,
       }
     }
 
-    // /commands
+    // /commands /help
     if (trimmed === '/commands' || trimmed === '/help') {
       return {
+        kind: 'reply',
         text: `🐱 **opencode-copilot**\n
 \`/new\` — 创建新会话
 \`/list\` — 查看活跃会话（带编号）
-\`/use <编号|ID>\` — 绑定会话（编号/ID/前缀）
-\`/connect <id>\` — 直接绑定到指定 session
-\`/unbind\` — 取消绑定当前对话
-\`/where\` — 查看当前绑定信息
-\`/status\` — 同 /where
-\`/commands\` — 显示命令列表
+\`/use <编号|ID|前缀|标题>\` — 绑定会话
+\`/thread <id> <msg>\` — 绑定并直接发消息
+\`/connect <id>\` — 直接绑定
+\`/unbind\` — 取消绑定
+\`/where\` / \`/status\` — 查看当前绑定
+\`/commands\` / \`/help\` — 命令列表
 
 Chat: ${chatId.slice(0, 16)}...`,
       }
@@ -140,4 +194,17 @@ Chat: ${chatId.slice(0, 16)}...`,
   }
 
   return { handle }
+}
+
+/** Resolve session from local list by numeric index, full ID, or prefix. */
+function resolveSession(
+  sessions: Array<{ feishu_key: string; session_id: string }>,
+  query: string,
+): string | null {
+  const num = parseInt(query, 10)
+  if (num >= 1 && num <= sessions.length) return sessions[num - 1].session_id
+  if (query.startsWith('ses_') && sessions.some(s => s.session_id === query)) return query
+  const prefix = sessions.filter(s => s.session_id.startsWith(query))
+  if (prefix.length === 1) return prefix[0].session_id
+  return null
 }

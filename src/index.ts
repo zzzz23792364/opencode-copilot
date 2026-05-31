@@ -12,6 +12,7 @@ import { createMessageDedup } from './bridge/message-dedup.js'
 import { createOutboundHandler } from './bridge/outbound.js'
 import { createMessageHandler } from './bridge/message-handler.js'
 import { StreamingOutboundHook } from './bridge/StreamingOutboundHook.js'
+import { opencodeRun } from './bridge/opencode-run.js'
 import { MediaService } from './bridge/media-service.js'
 import { createCommandHandler } from './commands/handlers.js'
 import { startPoller } from './feishu-poller.js'
@@ -91,7 +92,12 @@ async function main() {
         db,
       )
       if (cmdResult) {
-        outbound.sendFormatted(parsed.chatId, cmdResult.text, '命令结果').catch(() => {})
+        if (cmdResult.kind === 'thread') {
+          const result = await opencodeRun(cmdResult.message, cmdResult.sessionId)
+          await outbound.sendFormatted(parsed.chatId, result.text, '消息')
+        } else {
+          outbound.sendFormatted(parsed.chatId, cmdResult.text, '命令结果').catch(() => {})
+        }
         return
       }
 
