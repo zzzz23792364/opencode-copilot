@@ -87,6 +87,7 @@ export class StreamingOutboundHook {
 
     try {
       await adapter.editMessage(session.externalChatId, session.platformMessageId, `${accumulatedText} ▌`)
+      this.opts.log.debug({ externalChatId, len: accumulatedText.length, elapsed }, '[StreamingOutbound] PATCH ok')
       session.lastUpdateAt = now
       session.lastContentLength = accumulatedText.length
     } catch (err) {

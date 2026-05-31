@@ -1,6 +1,6 @@
 import type { Database } from 'bun:sqlite'
 import { getSessionStmt } from '../utils/db.js'
-import { listSessions } from '../utils/opencode-db.js'
+import { listSessions, listProjects } from '../utils/opencode-db.js'
 import { createLogger } from '../utils/logger.js'
 import type { FeishuAdapter, FeishuCardAction } from '../feishu/FeishuAdapter.js'
 
@@ -133,7 +133,87 @@ export async function handleCardAction(
       break
     }
 
+    case 'select_project': {
+      await handleProjectSelect(action, adapter, db)
+      break
+    }
+
     default:
       log.warn({ actionType }, 'Unknown card action')
+  }
+}
+
+/**
+ * Build /projects interactive card with project selection buttons.
+ */
+export function buildProjectListCard(
+  chatId: string,
+  projects: Array<{ directory: string; count: number }>,
+  currentCwd: string | null,
+): object {
+  const elements: object[] = [{ tag: 'markdown', content: '点击按钮选择项目：' }]
+
+  const buttons = projects.map((p, i) => {
+    const dirName = p.directory.split('/').pop() || p.directory
+    const mark = p.directory === currentCwd ? ' ✓' : ''
+    return {
+      tag: 'button' as const,
+      text: { tag: 'plain_text' as const, content: `[${i + 1}] ${dirName} (${p.count})${mark}` },
+      value: { action: 'select_project', directory: p.directory, index: i + 1 },
+      type: p.directory === currentCwd ? 'primary' as const : 'default' as const,
+    }
+  })
+
+  for (let i = 0; i < buttons.length; i += 5) {
+    elements.push({ tag: 'action' as const, actions: buttons.slice(i, i + 5) })
+  }
+
+  return {
+    config: { update_multi: true },
+    header: {
+      title: { tag: 'plain_text' as const, content: `📁 项目 (${projects.length})` },
+      template: 'blue' as const,
+    },
+    elements,
+  }
+}
+
+/** Handle select_project card action — set opencode_cwd for the chat. */
+async function handleProjectSelect(
+  action: FeishuCardAction & { open_message_id?: string },
+  adapter: FeishuAdapter,
+  db: Database,
+): Promise<void> {
+  const directory = action.actionValue.directory as string
+  if (!directory) return
+
+  const dirName = directory.split('/').pop()
+  const openMessageId = (action as any).open_message_id as string | undefined
+
+  // Ensure row exists with cwd
+  const stmt = getSessionStmt(db)
+  const existing = stmt.get.get(action.chatId)
+  if (existing) {
+    db.run('UPDATE feishu_sessions SET opencode_cwd = ?, last_active = ? WHERE feishu_key = ?',
+      [directory, Date.now(), action.chatId])
+  } else {
+    stmt.upsert.run(action.chatId, 'placeholder', 'default', null, directory, Date.now(), Date.now())
+  }
+
+  log.info({ chatId: action.chatId, directory }, 'Card: project selected')
+
+  if (openMessageId) {
+    try {
+      await patchCard(adapter, openMessageId, {
+        config: { update_multi: true },
+        header: {
+          title: { tag: 'plain_text' as const, content: `✅ 已选择: ${dirName}` },
+          template: 'green' as const,
+        },
+        elements: [{ tag: 'markdown', content: `项目: ${directory}\n用 /list 查看会话，或用 /project 选择其他项目` }],
+      })
+    } catch (err) {
+      log.warn({ err: String(err) }, 'Failed to patch project card')
+    }
   }
 }

@@ -61,9 +61,18 @@ async function main() {
   await mediaService.ensureDir()
   const messageHandler = createMessageHandler(sessionManager, dedup, outbound, mediaService)
 
+  // Inflight request tracker for graceful shutdown
+  let inflightCount = 0
+  let shuttingDown = false
+
+  function enterRequest() { inflightCount++ }
+  function leaveRequest() { inflightCount-- }
+
   // ── Unified onMessage: parse via adapter.parseEvent() ──
 
   async function onMessage(data: Record<string, unknown>) {
+    if (shuttingDown) return
+    enterRequest()
     try {
       // Wrap raw WS data in envelope format expected by parseEvent
       const envelope = {
@@ -111,14 +120,22 @@ async function main() {
       await messageHandler.handle(parsed)
     } catch (err) {
       log.error({ err: String(err) }, 'Unhandled error in onMessage')
+    } finally {
+      leaveRequest()
     }
   }
 
   // ── Card action handler ──
 
   async function onCardAction(action: FeishuCardAction & { open_message_id?: string }) {
-    log.info({ senderId: action.senderId, actionValue: action.actionValue }, 'Card action')
-    await handleCardAction(action, adapter, db)
+    if (shuttingDown) return
+    enterRequest()
+    try {
+      log.info({ senderId: action.senderId, actionValue: action.actionValue }, 'Card action')
+      await handleCardAction(action, adapter, db)
+    } finally {
+      leaveRequest()
+    }
   }
 
   // Start Feishu WS
@@ -134,11 +151,31 @@ async function main() {
   const stopPoller = startPoller({ db, adapter, intervalMs: 3000 })
   log.info('TUI→Feishu poller started')
 
-  // Graceful shutdown
-  const shutdown = () => {
-    log.info('Shutting down...')
+  // Graceful shutdown: wait for inflight requests to finish
+  let shutdownTimer: ReturnType<typeof setTimeout> | null = null
+
+  function shutdown() {
+    if (shuttingDown) return
+    shuttingDown = true
+    log.info({ inflightCount }, 'Shutting down...')
+
     stopPoller()
-    process.exit(0)
+
+    // Force exit after 30s if requests don't finish
+    shutdownTimer = setTimeout(() => {
+      log.warn({ inflightCount }, 'Force exit after grace period')
+      process.exit(0)
+    }, 30_000)
+
+    // Poll until inflightCount reaches 0
+    const check = setInterval(() => {
+      if (inflightCount <= 0) {
+        clearInterval(check)
+        if (shutdownTimer) clearTimeout(shutdownTimer)
+        log.info('All requests drained, exiting')
+        process.exit(0)
+      }
+    }, 200)
   }
   process.on('SIGTERM', shutdown)
   process.on('SIGINT', shutdown)

@@ -19,8 +19,8 @@ updated: 2026-05-31
 
 | 维度 | 活跃 / Pending | 近期 Done |
 |------|---------------|-----------|
-| Features | **1** in_progress，**0** pending | 桥接核心 ✅ 命令系统 ✅ 流式卡片 ✅ 生命周期管理 ✅ 项目切换 ✅ 文档体系 ✅ |
-| Bugs | **0** active | — |
+| Features | **1** in_progress，**0** pending | 桥接核心 ✅ 命令系统 ✅ 流式卡片 ✅ 生命周期管理 ✅ 项目切换 ✅ 文档体系 ✅ 交互卡片 ✅
+| Bugs | **0** active | B001 ✅ B002 ✅ B003 ✅ |
 | Docs | **0** pending | SPEC ✅ README ✅ SOP ✅ CHANGELOG ✅ decisions ✅ |
 
 ---
@@ -29,10 +29,10 @@ updated: 2026-05-31
 
 | ID | Name | Status | Owner | Link |
 |----|------|--------|-------|------|
-| **F001** | **流式输出打磨** | **todo** | TBD | [/use 和 /list 交互升级为卡片按钮、placeholder 卡片优化 |
+| **F001** | **流式输出打磨** | **todo** | TBD | minDeltaChars=200 对中文偏大导致更新缓慢；调整阈值 |
 | **F002** | **Webhook 模式** | **pending** | TBD | 支持 `FEISHU_CONNECTION_MODE=webhook`，URL 验证 |
 | **F003** | **群聊支持** | **pending** | TBD | @提及检测、群聊白名单、多用户 session 隔离 |
-| **F004** | **飞书交互卡片** | **todo** | TBD | /list /use 做成交互卡片，按钮点选取代文本命令 |
+| **F004** | **飞书交互卡片** | **in_progress** | TBD | /list 卡片已完成，扩展到 /projects /use |
 
 ---
 
@@ -71,10 +71,9 @@ updated: 2026-05-31
 ## Next Steps
 
 按优先级：
-1. **F003 群聊支持** — 当前只支持 p2p 私聊，群聊 @bot 后会触发但缺乏白名单
-2. **F001 流式卡片打磨** — /list /use 用卡片按钮交互；placeholder 文案优化
-3. **F004 交互卡片** — 将 /list /use /project 升级为交互卡片（需搭建卡片动作路由）
-4. **F002 Webhook 模式** — 可选，当前 WS 已经工作良好
+1. **F004 交互卡片** — /projects 交互卡片 + /use 卡片按钮
+2. **F001 流式输出打磨** — minDeltaChars 从 200 降到 50
+3. **F003 群聊支持** — @提及白名单
 
 ---
 
