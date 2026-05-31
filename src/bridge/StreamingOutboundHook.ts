@@ -89,11 +89,19 @@ export class StreamingOutboundHook {
     }, HEARTBEAT_MS)
   }
 
-  private async patchCard(session: StreamingSession, text: string): Promise<void> {
+  private async patchCard(
+    session: StreamingSession,
+    text: string,
+    header?: { title: string; template: 'grey' | 'blue' | 'green' | 'red' },
+  ): Promise<void> {
     const adapter = this.opts.adapters.get(session.connectorId) as any
     if (!adapter?.client?.im?.message?.patch || !session.platformMessageId) return
 
-    const card = { elements: [{ tag: 'markdown', content: text }] }
+    const card: any = { elements: [{ tag: 'markdown', content: text }] }
+    if (header) {
+      card.config = { update_multi: true }
+      card.header = { title: { tag: 'plain_text', content: header.title }, template: header.template }
+    }
     await adapter.client.im.message.patch({
       path: { message_id: session.platformMessageId },
       data: { content: JSON.stringify(card) },
@@ -106,7 +114,7 @@ export class StreamingOutboundHook {
 
     const elapsedSec = Math.floor((Date.now() - session.startTime) / 1000)
     const content = `【${session.catDisplayName}🐱】⏳ 思考中... (${elapsedSec}s)`
-    this.patchCard(session, content)
+    this.patchCard(session, content, { title: `⏳ 思考中... (${elapsedSec}s)`, template: 'grey' })
       .then(() => this.opts.log.debug({ chatId: session.externalChatId }, '[StreamingOutbound] heartbeat PATCH'))
       .catch(() => { /* silent */ })
   }
@@ -123,7 +131,7 @@ export class StreamingOutboundHook {
 
     session.firstChunk = false
 
-    this.patchCard(session, `${accumulatedText} ▌`)
+    this.patchCard(session, `${accumulatedText} ▌`, { title: '💭 回复中...', template: 'blue' })
       .then(() => {
         this.opts.log.debug({ externalChatId, len: accumulatedText.length, elapsed, delta }, '[StreamingOutbound] PATCH ok')
       })
@@ -140,8 +148,9 @@ export class StreamingOutboundHook {
     if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
     this.sessions.delete(externalChatId)
 
+    const duration = Math.floor((Date.now() - session.startTime) / 1000)
     try {
-      await this.patchCard(session, finalText)
+      await this.patchCard(session, finalText, { title: `✅ 完成 (${duration}s)`, template: 'green' })
     } catch (err) {
       this.opts.log.warn({ err: String(err) }, '[StreamingOutbound] onStreamEnd editMessage failed')
     }
