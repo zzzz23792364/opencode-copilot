@@ -79,19 +79,15 @@ export function createCommandHandler(): CommandHandler {
       return { kind: 'reply', text: `✅ 新会话已创建\nSession: ${sessionId}` }
     }
 
-    // /projects — list all project directories
+    // /projects — list all project directories (interactive card)
     if (trimmed === '/projects') {
       const projects = listProjects()
       if (projects.length === 0) return { kind: 'reply', text: '📭 暂无 opencode 项目' }
       const currentCwd = getCwd(db, chatId)
-      const lines = projects.map((p, i) => {
-        const dirName = p.directory.split('/').pop() || p.directory
-        const cur = p.directory === currentCwd ? ' ✓' : ''
-        return `[${i + 1}] ${dirName}  (${p.count} sessions)${cur}`
-      })
       return {
-        kind: 'reply',
-        text: `📁 项目 (${projects.length}):\n${lines.join('\n')}\n\n用 /project <编号> 选择项目`,
+        kind: 'card',
+        card: null as any,
+        context: { actionType: 'list_projects', sessionList: [] },
       }
     }
 

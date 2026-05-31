@@ -8,7 +8,7 @@ import { pickReceiptLine } from '../feishu/feishu-receipt-lines.js'
 
 const DEFAULT_UPDATE_INTERVAL_MS = 2000
 const DEFAULT_MIN_DELTA_CHARS = 50
-const HEARTBEAT_INTERVAL_MS = 5000
+const HEARTBEAT_MS = 5000
 
 interface StreamingSession {
   readonly externalChatId: string
@@ -17,12 +17,8 @@ interface StreamingSession {
   lastUpdateAt: number
   lastContentLength: number
   catDisplayName: string
-  /** True until the first text chunk is PATCHed — used for immediate-first-chunk optimization */
   firstChunk: boolean
-  /** Current tool status text shown in card */
-  toolStatus: string
-  /** Heartbeat timer for idle indication */
-  heartbeatTimer?: ReturnType<typeof setInterval>
+  heartbeatTimer: ReturnType<typeof setInterval> | null
 }
 
 export interface StreamingOutboundHookOptions {
@@ -72,40 +68,36 @@ export class StreamingOutboundHook {
           lastContentLength: 0,
           catDisplayName: displayName,
           firstChunk: true,
-          toolStatus: '',
+          heartbeatTimer: null,
         }
-        // Start heartbeat: if idle for too long, show thinking indicator
-        session.heartbeatTimer = setInterval(() => {
-          this.heartbeat(session)
-        }, HEARTBEAT_INTERVAL_MS)
-
         this.sessions.set(externalChatId, session)
-        this.opts.log.info({ externalChatId, messageId: msgId }, '[StreamingOutbound] placeholder sent, heartbeat started')
       }
     } catch (err) {
       this.opts.log.warn({ err: String(err), connectorId }, '[StreamingOutbound] sendPlaceholder failed')
     }
   }
 
-  /** Update card to show current tool execution status */
-  async onToolUse(externalChatId: string, toolName: string, state: 'running' | 'done' | 'error'): Promise<void> {
+  /** Start heartbeat timer — called by outbound after placeholder is sent. */
+  startHeartbeat(externalChatId: string): void {
     const session = this.sessions.get(externalChatId)
-    if (!session) return
+    if (!session || session.heartbeatTimer) return
 
-    const icons: Record<string, string> = { running: '🔧', done: '✅', error: '❌' }
-    const icon = icons[state] || '🔧'
-    const shortName = toolName.replace(/^Bash\(/, '').replace(/^Read\(/, '').replace(/^Write\(/, '').replace(/^Edit\(/, '').replace(/\)$/, '').slice(0, 20)
+    session.heartbeatTimer = setInterval(() => {
+      this.doHeartbeat(session)
+    }, HEARTBEAT_MS)
+  }
 
-    session.toolStatus = state === 'done' ? '' : `${icon} ${shortName}`
-    session.lastUpdateAt = Date.now() // reset throttle so this shows immediately
-
-    const content = buildCardContent(session, '')
+  private doHeartbeat(session: StreamingSession): void {
     const adapter = this.opts.adapters.get(session.connectorId)
-    if (adapter?.editMessage && session.platformMessageId) {
-      adapter.editMessage(session.externalChatId, session.platformMessageId, content)
-        .then(() => this.opts.log.debug({ tool: shortName, state }, '[StreamingOutbound] tool status PATCH'))
-        .catch((err) => this.opts.log.warn({ err: String(err) }, '[StreamingOutbound] tool PATCH failed'))
-    }
+    if (!adapter?.editMessage || !session.platformMessageId) return
+
+    const elapsed = Date.now() - session.lastUpdateAt
+    // Don't heartbeat if we just updated or text has started arriving
+    if (elapsed < HEARTBEAT_MS - 500 || !session.firstChunk) return
+
+    const content = `【${session.catDisplayName}🐱】⏳ 思考中...`
+    adapter.editMessage(session.externalChatId, session.platformMessageId, content)
+      .catch(() => { /* silent */ })
   }
 
   async onStreamChunk(connectorId: string, externalChatId: string, accumulatedText: string): Promise<void> {
@@ -116,7 +108,7 @@ export class StreamingOutboundHook {
     const elapsed = now - session.lastUpdateAt
     const delta = accumulatedText.length - session.lastContentLength
 
-    // #1: First chunk fires immediately (bypass delta check)
+    // First chunk: fire immediately. Subsequent: respect throttle.
     if (!session.firstChunk && elapsed < this.updateIntervalMs && delta < this.minDeltaChars) return
 
     session.firstChunk = false
@@ -124,8 +116,7 @@ export class StreamingOutboundHook {
     const adapter = this.opts.adapters.get(connectorId)
     if (!adapter?.editMessage || !session.platformMessageId) return
 
-    const content = buildCardContent(session, `${accumulatedText} ▌`)
-    adapter.editMessage(session.externalChatId, session.platformMessageId, content)
+    adapter.editMessage(session.externalChatId, session.platformMessageId, `${accumulatedText} ▌`)
       .then(() => {
         this.opts.log.debug({ externalChatId, len: accumulatedText.length, elapsed, delta }, '[StreamingOutbound] PATCH ok')
       })
@@ -139,49 +130,22 @@ export class StreamingOutboundHook {
   async onStreamEnd(connectorId: string, externalChatId: string, finalText: string): Promise<void> {
     const session = this.sessions.get(externalChatId)
     if (!session) return
-
-    // Stop heartbeat
     if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
     this.sessions.delete(externalChatId)
 
     const adapter = this.opts.adapters.get(connectorId)
     if (!session.platformMessageId) return
 
-    // #4: Final PATCH without ▌ cursor
-    const content = buildCardContent(session, finalText)
     try {
-      await adapter?.editMessage?.(session.externalChatId, session.platformMessageId, content)
+      await adapter?.editMessage?.(session.externalChatId, session.platformMessageId, finalText)
     } catch (err) {
       this.opts.log.warn({ err: String(err) }, '[StreamingOutbound] onStreamEnd editMessage failed')
     }
   }
 
-  async cleanupPlaceholders(connectorId: string, externalChatId: string): Promise<void> {
+  async cleanupPlaceholders(_connectorId: string, externalChatId: string): Promise<void> {
     const session = this.sessions.get(externalChatId)
     if (session?.heartbeatTimer) clearInterval(session.heartbeatTimer)
     this.sessions.delete(externalChatId)
   }
-
-  /** #3: Heartbeat — if no text has arrived for a while, show thinking indicator */
-  private heartbeat(session: StreamingSession): void {
-    if (session.firstChunk) return // don't override the receipt-line placeholder before first text
-
-    const adapter = this.opts.adapters.get(session.connectorId)
-    if (!adapter?.editMessage || !session.platformMessageId) return
-
-    const content = buildCardContent(session, '⏳ 思考中...')
-    adapter.editMessage(session.externalChatId, session.platformMessageId, content)
-      .catch(() => { /* silent */ })
-    session.lastUpdateAt = Date.now()
-  }
-}
-
-/** Build card markdown content from session state. */
-function buildCardContent(session: StreamingSession, text: string): string {
-  let content = ''
-  if (session.toolStatus) {
-    content += `${session.toolStatus}\n\n`
-  }
-  content += text
-  return content
 }

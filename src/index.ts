@@ -16,7 +16,7 @@ import { opencodeRun } from './bridge/opencode-run.js'
 import { MediaService } from './bridge/media-service.js'
 import { createCommandHandler } from './commands/handlers.js'
 import { startPoller } from './feishu-poller.js'
-import { buildSessionListCard, sendCard, handleCardAction } from './feishu/card-interaction.js'
+import { buildSessionListCard, buildProjectListCard, sendCard, handleCardAction } from './feishu/card-interaction.js'
 import type { FeishuInboundMessage } from './feishu/FeishuAdapter.js'
 import type { Database } from 'bun:sqlite'
 
