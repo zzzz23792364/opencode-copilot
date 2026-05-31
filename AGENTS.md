@@ -6,7 +6,7 @@
 ### Hard Constraints
 - **opencode DB is read-only**: Never modify `~/.local/share/opencode/opencode.db` directly. All interactions go through `opencode` CLI.
 - **Feishu secrets belong in .env**: Never commit App ID / App Secret to git. Use `.env` file (gitignored) or environment variables.
-- **Bridge runs on Bun**: Runtime dependency is Bun >= 1.1.0. No Node.js-only code paths.
+- **Bridge runs on Node.js**: Runtime dependency is Node.js >= 18. No Bun-only code paths.
 
 ### Quality Discipline
 - **Spec before code**: Non-trivial features require a spec document in `docs/features/` or `docs/decisions/`.

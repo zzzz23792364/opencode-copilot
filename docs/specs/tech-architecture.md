@@ -34,7 +34,7 @@ npm run dev            # tsx watch src/index.ts
 npm start              # tsx src/index.ts
 npm run test:e2e       # tsx scripts/e2e-test.ts
 npm run test:ws        # tsx scripts/test-ws.ts
-npm run check:config   # bun run scripts/check-config.ts
+npx tsc --noEmit        # Type check
 ```
 
 ## Project Structure

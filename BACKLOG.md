@@ -19,8 +19,8 @@ updated: 2026-06-01
 
 | 维度 | 活跃 / Pending | 近期 Done |
 |------|---------------|-----------|
-| Features | **1** in_progress，**0** pending | 桥接核心 ✅ 命令系统 ✅ 流式卡片 ✅ 生命周期管理 ✅ 项目切换 ✅ 文档体系 ✅ 交互卡片 ✅
-| Bugs | **0** active | B001 ✅ B002 ✅ B003 ✅ |
+| Features | **0** in_progress，**1** pending | 桥接核心 ✅ 命令系统 ✅ 流式卡片 ✅ 生命周期管理 ✅ 项目切换 ✅ 文档体系 ✅ 交互卡片 ✅ /sw ✅ Node.js迁移 ✅ |
+| Bugs | **0** active | B001-B006 全部 ✅ |
 | Docs | **0** pending | SPEC ✅ README ✅ SOP ✅ CHANGELOG ✅ decisions ✅ |
 
 ---
@@ -34,6 +34,21 @@ updated: 2026-06-01
 ---
 
 ## Recently Done (2026-06-01)
+
+### v0.2.0 — Stability & UX
+
+- **运行时迁移**: Bun → Node.js (tsx)，`bun:sqlite` → `better-sqlite3`
+- **`/sw` 命令**: 两步卡片流（选项目 → 选 session）
+- **命令管道去重**: B006 — WS 重放命令不再重复执行
+- **`/new` 保留 CWD**: 不再重置 `/project` 选择的目录
+- **流式卡片竞态修复**: `onStreamEnd` 等最后一个 chunk PATCH 完成再发 ✅
+- **僵尸进程修复**: restart 轮询等老进程真正退出再启动
+- **重启安全**: `shell: true` 是所有 spawn 的 opencode 必备项
+- **BUG 修复**:
+  - B001-B003: 基础标志/poller/心跳问题
+  - B004: editMessage header 覆盖
+  - B005: WS 重连 + 心跳阻塞 shutdown
+  - B006: 命令管道无去重保护
 
 ### v0.1.0 — Initial Release
 
@@ -56,11 +71,10 @@ updated: 2026-06-01
   - `/thread <id> <msg>`, `/connect <id>`, `/unbind`
   - `/where` / `/status`, `/commands` / `/help`
   - `/projects`, `/project <N>`
-- **TUI→飞书 poller**: `opencode export` 轮询 + 增量转发
-- **消息去重**: SQLite-backed + `message_id` TTL
+- **消息去重**: SQLite-backed + `message_id` TTL=5min
 - **FIFO 队列**: 每个 chat 一个请求串行处理
 - **生命周期管理**: `npm start/stop/restart` + PID file
-- **npm 包支持**: `bin/opencode-copilot.ts` CLI 入口 + `.env` 自动加载
+- **npm 包支持**: `bin/opencode-copilot.mjs` CLI 入口 + dotenv 自动加载
 - **文档体系**: AGENTS.md / BACKLOG.md / SPEC.md / SOP.md / CHANGELOG.md / decisions/
 
 ---

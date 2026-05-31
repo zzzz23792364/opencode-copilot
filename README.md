@@ -32,6 +32,8 @@ opencode-copilot start
 | 命令 | 说明 |
 |------|------|
 | `/new` | 创建新会话 |
+| `/sw` | 快速切换项目和会话（两步卡片流） |
+| `/projects` / `/project <编号>` | 查看/选择项目目录 |
 | `/list` | 查看活跃会话（带编号和标题） |
 | `/use <编号\|ID\|前缀\|标题>` | 绑定会话 |
 | `/thread <编号\|ID> <消息>` | 绑定并直接发消息 |
@@ -94,7 +96,7 @@ feishu_key (chat_id) → session_id (ses_xxx)
 
 ## Prerequisites
 
-- **Bun** >= 1.1.0（运行 TypeScript）
+- **Node.js** >= 18（通过 nvm 或系统包管理器）
 - **opencode** CLI（共享 session）
 - **飞书应用**（需开通 `im:message` 权限，事件订阅长连接模式）
 
