@@ -28,7 +28,7 @@ export function createSessionManager(db: Database): SessionManager {
       stmt.touch.run(Date.now(), feishuKey)
       const resolvedCwd = existing.opencode_cwd || cwd || null
       const mode = existing.mode || 'build'
-      log.info({ feishuKey, sessionId: existing.session_id }, 'Reusing existing session')
+      log.info({ feishuKey, sessionId: existing.session_id, cwd: resolvedCwd }, 'Reusing existing session')
       return { sessionId: existing.session_id, cwd: resolvedCwd }
     }
 

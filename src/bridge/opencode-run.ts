@@ -37,7 +37,7 @@ export function opencodeRun(
     if (opts.sessionId) args.push('--session', opts.sessionId)
     args.push(opts.prompt)
 
-    log.info({ sessionId: opts.sessionId, prompt: opts.prompt.slice(0, 50) }, 'spawning opencode')
+    log.info({ sessionId: opts.sessionId, cwd: opts.cwd, prompt: opts.prompt.slice(0, 50) }, 'spawning opencode')
 
     const proc = spawn('opencode', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -93,6 +93,9 @@ export function opencodeRun(
           const toolName = ev.part.name || ev.part.type || 'tool'
           opts.onToolUse(toolName, 'running')
         }
+        if (ev.type !== 'text' && ev.type !== 'tool_use' && ev.type !== 'step_start' && ev.type !== 'step_finish') {
+          log.debug({ sessionId: opts.sessionId, type: ev.type, keys: Object.keys(ev) }, 'opencode NDJSON event')
+        }
       } catch {
         // skip malformed lines
       }
@@ -106,7 +109,14 @@ export function opencodeRun(
       resolved = true
       clearTimeout(timeout)
       await lastOnText.catch(() => {})
-      if (code !== 0) log.warn({ exit: code, stderr: stderr.slice(0, 300) }, 'opencode non-zero exit')
+      if (code !== 0) {
+        log.warn({ exit: code, stderr: stderr.slice(0, 300) }, 'opencode non-zero exit')
+      } else if (stderr.trim()) {
+        log.info({ sessionId: opts.sessionId, stderr: stderr.slice(0, 200) }, 'opencode stderr')
+      }
+      if (!fullText && stderr.trim()) {
+        log.warn({ sessionId: opts.sessionId, stderr: stderr.slice(0, 500) }, 'opencode produced no text, stderr may contain diagnostics')
+      }
       resolve({ text: fullText || '(no response)', sessionId: resolvedSessionId })
     })
 
