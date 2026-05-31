@@ -16,6 +16,7 @@ interface StreamingSession {
   platformMessageId: string
   lastUpdateAt: number
   lastContentLength: number
+  startTime: number
   catDisplayName: string
   firstChunk: boolean
   heartbeatTimer: ReturnType<typeof setInterval> | null
@@ -66,6 +67,7 @@ export class StreamingOutboundHook {
           platformMessageId: msgId,
           lastUpdateAt: Date.now(),
           lastContentLength: 0,
+          startTime: Date.now(),
           catDisplayName: displayName,
           firstChunk: true,
           heartbeatTimer: null,
@@ -102,7 +104,8 @@ export class StreamingOutboundHook {
     const elapsed = Date.now() - session.lastUpdateAt
     if (elapsed < HEARTBEAT_MS - 500 || !session.firstChunk) return
 
-    const content = `【${session.catDisplayName}🐱】⏳ 思考中...`
+    const elapsedSec = Math.floor((Date.now() - session.startTime) / 1000)
+    const content = `【${session.catDisplayName}🐱】⏳ 思考中... (${elapsedSec}s)`
     this.patchCard(session, content)
       .then(() => this.opts.log.debug({ chatId: session.externalChatId }, '[StreamingOutbound] heartbeat PATCH'))
       .catch(() => { /* silent */ })
