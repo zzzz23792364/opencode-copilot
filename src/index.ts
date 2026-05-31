@@ -1,5 +1,6 @@
 import 'dotenv/config'
 import { mkdir } from 'node:fs/promises'
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { loadConfig } from './utils/config.js'
@@ -27,6 +28,20 @@ async function main() {
 
   const config = loadConfig()
   log.info({ appId: config.feishuAppId.slice(0, 8) + '...' }, 'Config loaded')
+
+  // Self-defense: lock file prevents concurrent instances
+  const lockFile = join(homedir(), '.opencode-copilot', 'bridge.lock')
+  const myPid = process.pid
+  try {
+    if (existsSync(lockFile)) {
+      const oldPid = parseInt(readFileSync(lockFile, 'utf-8').trim(), 10)
+      if (oldPid) {
+        try { process.kill(oldPid, 0); log.error(`Another instance (PID ${oldPid}) is running. Exiting.`); process.exit(1) } catch { /* stale lock */ }
+      }
+    }
+    writeFileSync(lockFile, String(myPid))
+    process.on('exit', () => { try { unlinkSync(lockFile) } catch {} })
+  } catch { /* non-fatal */ }
 
   // Initialize DB
   const dbDir = join(homedir(), '.opencode-copilot')
