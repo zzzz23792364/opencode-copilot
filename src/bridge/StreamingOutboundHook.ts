@@ -103,7 +103,9 @@ export class StreamingOutboundHook {
     if (elapsed < HEARTBEAT_MS - 500 || !session.firstChunk) return
 
     const content = `【${session.catDisplayName}🐱】⏳ 思考中...`
-    this.patchCard(session, content).catch(() => { /* silent */ })
+    this.patchCard(session, content)
+      .then(() => this.opts.log.debug({ chatId: session.externalChatId }, '[StreamingOutbound] heartbeat PATCH'))
+      .catch(() => { /* silent */ })
   }
 
   async onStreamChunk(connectorId: string, externalChatId: string, accumulatedText: string): Promise<void> {
