@@ -1,12 +1,12 @@
 /**
  * Bridge lifecycle manager — start / stop / status / restart.
- * Usage: bun run scripts/manage.ts <start|stop|status|restart>
+ * Usage: tsx scripts/manage.ts <start|stop|status|restart>
  */
 import { spawn } from 'node:child_process'
-import { existsSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, dirname } from 'node:path'
-import { mkdirSync } from 'node:fs'
+import { join } from 'node:path'
+import { openSync } from 'node:fs'
 
 const PID_DIR = join(homedir(), '.opencode-copilot')
 const PID_FILE = join(PID_DIR, 'bridge.pid')
@@ -51,8 +51,8 @@ function start() {
     process.exit(1)
   }
 
-  const out = require('node:fs').openSync(LOG_FILE, 'a')
-  const proc = spawn('bun', ['run', 'src/index.ts'], {
+  const out = openSync(LOG_FILE, 'a')
+  const proc = spawn('npx', ['tsx', 'src/index.ts'], {
     cwd: process.cwd(),
     detached: true,
     stdio: ['ignore', out, out],
@@ -109,5 +109,5 @@ switch (cmd) {
   case 'status': status(); break
   case 'restart': stop(); setTimeout(start, 1000); break
   default:
-    console.log('Usage: bun run scripts/manage.ts <start|stop|status|restart>')
+    console.log('Usage: tsx scripts/manage.ts <start|stop|status|restart>')
 }

@@ -21,20 +21,19 @@ TUI 输入   → session (SQLite) → AI 回复 → TUI 输出 + 飞书转发
 
 | 层 | 选型 | 备注 |
 |---|------|------|
-| 运行时 | Bun (运行) + npm (包管理) | WSL2 下 npm install 可靠，bun run 可直接跑 TS |
-| 语言 | TypeScript + ESM (`type: module`) | |
-| 飞书 SDK | `@larksuiteoapi/node-sdk` ^1.66.0 | WSClient + REST Client，clowder-local 同款 |
-| SQLite | `bun:sqlite` | 内置，零额外依赖 |
+| 运行时 | Node.js >= 18 (tsx) + npm (包管理) | 纯 Node，零 Bun 依赖 |
+
+| SQLite | `better-sqlite3` | 原生 C 扩展，稳定高性能 |
 | 配置 | `opencode-copilot.jsonc` | 参考 opencode-im-bridge 风格 |
 | 日志 | 控制台（结构化时间戳+模块名） | 无需 winston/pino |
 
 ## Commands
 
 ```bash
-npm run dev            # bun --watch run src/index.ts
-npm start              # bun run src/index.ts
-npm run test:e2e       # bun run scripts/e2e-test.ts
-npm run test:ws        # bun run scripts/test-ws.ts
+npm run dev            # tsx watch src/index.ts
+npm start              # tsx src/index.ts
+npm run test:e2e       # tsx scripts/e2e-test.ts
+npm run test:ws        # tsx scripts/test-ws.ts
 npm run check:config   # bun run scripts/check-config.ts
 ```
 
@@ -179,8 +178,8 @@ async function handle(event: FeishuMessageEvent): Promise<void> { ... }
 
 | 层级 | 内容 | 方式 |
 |------|------|------|
-| 手动 E2E | 飞书→opencode→飞书完整链路 | `bun run scripts/e2e-test.ts` |
-| 手动验证 | WS 事件接收 | `bun run scripts/test-ws.ts` |
+| 手动 E2E | 飞书→opencode→飞书完整链路 | `npx tsx scripts/e2e-test.ts` |
+| 手动验证 | WS 事件接收 | `npx tsx scripts/test-ws.ts` |
 | 手动验证 | Session 发现/创建 | TUI 中检查 session 对话是否出现 |
 
 初期不写自动化测试，以手动验证和实时日志为主。

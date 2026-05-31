@@ -41,7 +41,7 @@ git push origin main
 
 ## 质量门禁
 
-- **代码变更**: 必须编译（`bun run --dry` 通过）+ E2E 测试（飞书发消息验证）
+- **代码变更**: 必须无 TS 错误（`npx tsc --noEmit` 通过）+ E2E 测试（飞书发消息验证）
 - **Bug 修复**: Reproduce → check logs at `~/.opencode-copilot/bridge.log` → root cause → fix → 回归测试
 - **文档**: 新功能需在 `docs/CHANGELOG.md` 记录，重大变更需 `docs/decisions/` 的 D 号记录
 

@@ -1,4 +1,4 @@
-import { Database } from 'bun:sqlite'
+import Database from 'better-sqlite3'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
@@ -10,16 +10,14 @@ interface OpenSession {
   directory: string | null
 }
 
-/** Open the shared opencode SQLite DB in read-only mode. */
-function openReadonly(): Database {
+function openReadonly() {
   return new Database(DB_PATH, { readonly: true })
 }
 
-/** List all distinct project directories with session counts. */
 export function listProjects(): Array<{ directory: string; count: number }> {
   const db = openReadonly()
   try {
-    const rows = db.query(
+    const rows = db.prepare(
       'SELECT directory, COUNT(*) as count FROM session WHERE directory IS NOT NULL GROUP BY directory ORDER BY count DESC'
     ).all() as Array<{ directory: string; count: number }>
     return rows
@@ -28,11 +26,10 @@ export function listProjects(): Array<{ directory: string; count: number }> {
   }
 }
 
-/** List sessions for a specific project directory. */
 export function listSessions(directory: string, limit = 20): OpenSession[] {
   const db = openReadonly()
   try {
-    const rows = db.query(
+    const rows = db.prepare(
       'SELECT id, title, directory FROM session WHERE directory = ? AND (title IS NULL OR title NOT LIKE \'%@explore%\' AND title NOT LIKE \'%@general%\' AND title NOT LIKE \'%@task%\') ORDER BY time_updated DESC LIMIT ?'
     ).all(directory, limit) as OpenSession[]
     return rows
@@ -41,11 +38,10 @@ export function listSessions(directory: string, limit = 20): OpenSession[] {
   }
 }
 
-/** Get session by ID (across all projects). */
 export function getSessionById(sessionId: string): OpenSession | null {
   const db = openReadonly()
   try {
-    const row = db.query('SELECT id, title, directory FROM session WHERE id = ?').get(sessionId) as OpenSession | undefined
+    const row = db.prepare('SELECT id, title, directory FROM session WHERE id = ?').get(sessionId) as OpenSession | undefined
     return row ?? null
   } finally {
     db.close()

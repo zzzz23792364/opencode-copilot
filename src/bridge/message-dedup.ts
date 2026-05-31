@@ -1,4 +1,4 @@
-import type { Database } from 'bun:sqlite'
+import type { Database } from 'better-sqlite3'
 import { getDedupStmt } from '../utils/db.js'
 import { createLogger } from '../utils/logger.js'
 

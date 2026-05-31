@@ -1,4 +1,4 @@
-import type { Database } from 'bun:sqlite'
+import type { Database } from 'better-sqlite3'
 import { getSessionStmt } from '../utils/db.js'
 import { listSessions, listProjects } from '../utils/opencode-db.js'
 import { createLogger } from '../utils/logger.js'
@@ -229,8 +229,7 @@ async function handleProjectSelect(
   const stmt = getSessionStmt(db)
   const existing = stmt.get.get(action.chatId)
   if (existing) {
-    db.run('UPDATE feishu_sessions SET opencode_cwd = ?, last_active = ? WHERE feishu_key = ?',
-      [directory, Date.now(), action.chatId])
+    db.prepare('UPDATE feishu_sessions SET opencode_cwd = ?, last_active = ? WHERE feishu_key = ?').run(directory, Date.now(), action.chatId)
   } else {
     stmt.upsert.run(action.chatId, 'placeholder', 'default', null, directory, Date.now(), Date.now())
   }

@@ -8,7 +8,7 @@ created: 2026-05-31
 
 ## 前置条件
 
-- **Bun** >= 1.1.0 — `curl -fsSL https://bun.sh/install | bash`
+- **Node.js** >= 18 — via nvm or system package manager
 - **opencode CLI** — 已安装 (`which opencode`)
 - **飞书应用** — 在 [飞书开放平台](https://open.feishu.cn) 创建自建应用
 

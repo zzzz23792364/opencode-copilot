@@ -16,8 +16,8 @@ import { opencodeRun } from './bridge/opencode-run.js'
 import { MediaService } from './bridge/media-service.js'
 import { createCommandHandler } from './commands/handlers.js'
 import { buildSessionListCard, buildProjectListCard, sendCard, handleCardAction } from './feishu/card-interaction.js'
-import type { FeishuInboundMessage } from './feishu/FeishuAdapter.js'
-import type { Database } from 'bun:sqlite'
+import type { FeishuInboundMessage, FeishuCardAction } from './feishu/FeishuAdapter.js'
+import type { Database } from 'better-sqlite3'
 
 const log = createLogger('index')
 

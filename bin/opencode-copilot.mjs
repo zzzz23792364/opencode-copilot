@@ -1,15 +1,4 @@
-#!/usr/bin/env bun
-/**
- * opencode-copilot CLI — Feishu ↔ opencode TUI 双向桥
- *
- * Usage:
- *   opencode-copilot start    # Start the bridge daemon
- *   opencode-copilot stop     # Stop the bridge
- *   opencode-copilot status   # Check running status
- *   opencode-copilot restart  # Stop + start
- *   opencode-copilot dev      # Run in foreground (--watch)
- */
-
+#!/usr/bin/env node
 import { spawn } from 'node:child_process'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -26,23 +15,23 @@ switch (cmd) {
   case 'stop':
   case 'status':
   case 'restart': {
-    const proc = spawn('bun', ['run', manageScript, cmd], {
+    const proc = spawn('npx', ['tsx', manageScript, cmd], {
       cwd: projectDir,
       stdio: 'inherit',
     })
-    await new Promise<void>((resolve) => proc.on('close', () => resolve()))
+    proc.on('close', (code) => process.exit(code))
     break
   }
   case 'dev': {
-    const proc = spawn('bun', ['--watch', 'run', 'src/index.ts'], {
+    const proc = spawn('npx', ['tsx', 'watch', 'src/index.ts'], {
       cwd: projectDir,
       stdio: 'inherit',
     })
-    await new Promise<void>((resolve) => proc.on('close', () => resolve()))
+    proc.on('close', (code) => process.exit(code))
     break
   }
   default:
-    console.log(`opencode-copilot — Feishu ↔ opencode TUI 双向桥
+    console.log(`opencode-copilot — Feishu ↔ opencode TUI bridge
 
 Usage:
   opencode-copilot start     Start the bridge

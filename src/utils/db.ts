@@ -1,4 +1,4 @@
-import { Database } from 'bun:sqlite'
+import Database from 'better-sqlite3'
 import { createLogger } from './logger.js'
 
 const log = createLogger('db')
@@ -13,7 +13,7 @@ export interface SessionRow {
   last_active: number
 }
 
-export function createDatabase(dbPath: string): Database {
+export function createDatabase(dbPath: string) {
   const db = new Database(dbPath)
 
   db.exec('PRAGMA journal_mode=WAL')
@@ -42,15 +42,15 @@ export function createDatabase(dbPath: string): Database {
     forwarded_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`)
 
-  const r = db.query('PRAGMA table_info(feishu_sessions)').all() as Array<{ name: string }>
+  const r = db.prepare('PRAGMA table_info(feishu_sessions)').all() as Array<{ name: string }>
   log.info({ tables: r.map(x => x.name).join(', ') }, 'DB initialized')
 
   return db
 }
 
-export function getSessionStmt(db: Database) {
+export function getSessionStmt(db: any) {
   return {
-    get: db.prepare<SessionRow, string>('SELECT * FROM feishu_sessions WHERE feishu_key = ?'),
+    get: db.prepare('SELECT * FROM feishu_sessions WHERE feishu_key = ?'),
     upsert: db.prepare(
       `INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, created_at, last_active)
        VALUES (?, ?, ?, ?, ?, ?, ?)`
@@ -63,17 +63,17 @@ export function getSessionStmt(db: Database) {
   }
 }
 
-export function getDedupStmt(db: Database) {
+export function getDedupStmt(db: any) {
   return {
-    has: db.prepare<{ c: number }, string>('SELECT COUNT(*) as c FROM dedup WHERE message_id = ?'),
+    has: db.prepare('SELECT COUNT(*) as c FROM dedup WHERE message_id = ?'),
     insert: db.prepare('INSERT INTO dedup (message_id, created_at) VALUES (?, ?)'),
     cleanup: db.prepare('DELETE FROM dedup WHERE created_at < ?'),
   }
 }
 
-export function getForwardedStmt(db: Database) {
+export function getForwardedStmt(db: any) {
   return {
-    has: db.prepare<{ c: number }, string>('SELECT COUNT(*) as c FROM forwarded WHERE message_id = ?'),
+    has: db.prepare('SELECT COUNT(*) as c FROM forwarded WHERE message_id = ?'),
     insert: db.prepare('INSERT INTO forwarded (message_id, session_id, forwarded_at) VALUES (?, ?, ?)'),
   }
 }

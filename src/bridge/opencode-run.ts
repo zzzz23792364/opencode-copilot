@@ -41,7 +41,6 @@ export function opencodeRun(
     const proc = spawn('opencode', args, {
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: opts.cwd || undefined,
-      shell: true,
     })
     proc.stdin?.end()
 

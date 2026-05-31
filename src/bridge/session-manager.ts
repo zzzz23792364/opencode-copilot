@@ -1,4 +1,4 @@
-import type { Database } from 'bun:sqlite'
+import type { Database } from 'better-sqlite3'
 import { spawn } from 'node:child_process'
 import { createLogger } from '../utils/logger.js'
 import { getSessionStmt, type SessionRow } from '../utils/db.js'
@@ -27,7 +27,6 @@ export function createSessionManager(db: Database): SessionManager {
     if (existing && existing.session_id !== 'placeholder') {
       stmt.touch.run(Date.now(), feishuKey)
       const resolvedCwd = existing.opencode_cwd || cwd || null
-      const mode = existing.mode || 'build'
       log.info({ feishuKey, sessionId: existing.session_id, cwd: resolvedCwd }, 'Reusing existing session')
       return { sessionId: existing.session_id, cwd: resolvedCwd }
     }
@@ -53,10 +52,9 @@ export function createSessionManager(db: Database): SessionManager {
 
     // Store with optional cwd
     const upsertCwd = cwd || null
-    db.run(
-      'INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
-      [feishuKey, sessionId, 'default', null, upsertCwd, Date.now(), Date.now()]
-    )
+    db.prepare(
+      'INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
+    ).run(feishuKey, sessionId, 'default', null, upsertCwd, Date.now(), Date.now())
 
     log.info({ feishuKey, sessionId, cwd }, 'Session mapping created from discovery')
     return { sessionId, cwd: upsertCwd }

@@ -1,4 +1,4 @@
-import type { Database } from 'bun:sqlite'
+import type { Database } from 'better-sqlite3'
 import { spawn } from 'node:child_process'
 import { getSessionStmt } from '../utils/db.js'
 import { createLogger } from '../utils/logger.js'
