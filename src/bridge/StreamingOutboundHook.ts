@@ -8,6 +8,7 @@ import { pickReceiptLine } from '../feishu/feishu-receipt-lines.js'
 
 const DEFAULT_UPDATE_INTERVAL_MS = 2000
 const DEFAULT_MIN_DELTA_CHARS = 50
+const THINKING_TICK_SEC = 5
 
 interface StreamingSession {
   readonly externalChatId: string
@@ -19,6 +20,7 @@ interface StreamingSession {
   catDisplayName: string
   firstChunk: boolean
   pendingPatch?: Promise<void>
+  tickerId?: ReturnType<typeof setTimeout>
 }
 
 export interface StreamingOutboundHookOptions {
@@ -44,6 +46,27 @@ export class StreamingOutboundHook {
     this.minDeltaChars = opts.minDeltaChars ?? DEFAULT_MIN_DELTA_CHARS
   }
 
+  private startThinkingTicker(session: StreamingSession): void {
+    const tick = async (elapsed: number) => {
+      if (!this.sessions.has(session.externalChatId)) return
+      if (!session.firstChunk) return
+
+      try {
+        await this.patchCardOnly(session, `⏳ 思考中... (${elapsed}s)`, 'orange')
+      } catch { /* non-fatal */ }
+
+      session.tickerId = setTimeout(() => tick(elapsed + THINKING_TICK_SEC), THINKING_TICK_SEC * 1000)
+    }
+    session.tickerId = setTimeout(() => tick(THINKING_TICK_SEC), THINKING_TICK_SEC * 1000)
+  }
+
+  private clearTicker(session: StreamingSession): void {
+    if (session.tickerId) {
+      clearTimeout(session.tickerId)
+      session.tickerId = undefined
+    }
+  }
+
   async onStreamStart(
     externalChatId: string,
     connectorId: string,
@@ -60,7 +83,7 @@ export class StreamingOutboundHook {
       const placeholderText = `${prefix}${pickReceiptLine(catId)}`
       const msgId = await adapter.sendPlaceholder(externalChatId, placeholderText)
       if (msgId) {
-        this.sessions.set(externalChatId, {
+        const session: StreamingSession = {
           externalChatId,
           connectorId,
           platformMessageId: msgId,
@@ -69,11 +92,28 @@ export class StreamingOutboundHook {
           startTime: Date.now(),
           catDisplayName: displayName,
           firstChunk: true,
-        })
+        }
+        this.sessions.set(externalChatId, session)
+        this.startThinkingTicker(session)
       }
     } catch (err) {
       this.opts.log.warn({ err: String(err), connectorId }, '[StreamingOutbound] sendPlaceholder failed')
     }
+  }
+
+  private async patchCardOnly(session: StreamingSession, headerTitle: string, template: 'blue' | 'green' | 'red' | 'orange' = 'blue'): Promise<void> {
+    const adapter = this.opts.adapters.get(session.connectorId) as any
+    if (!adapter?.client?.im?.message?.patch || !session.platformMessageId) return
+
+    const card: any = {
+      config: { update_multi: true },
+      header: { title: { tag: 'plain_text' as const, content: headerTitle }, template },
+      elements: [{ tag: 'markdown', content: '...' }],
+    }
+    await adapter.client.im.message.patch({
+      path: { message_id: session.platformMessageId },
+      data: { content: JSON.stringify(card) },
+    })
   }
 
   private async patchCard(
@@ -119,6 +159,7 @@ export class StreamingOutboundHook {
     if (!session.firstChunk && elapsed < this.updateIntervalMs && delta < this.minDeltaChars) return
 
     session.firstChunk = false
+    this.clearTicker(session)
 
     session.pendingPatch = this.patchCard(session, `${accumulatedText} ▌`, { title: '💭 回复中...', template: 'blue' }, true)
       .then(() => {
@@ -135,6 +176,7 @@ export class StreamingOutboundHook {
     const session = this.sessions.get(externalChatId)
     if (!session) return
     this.sessions.delete(externalChatId)
+    this.clearTicker(session)
 
     if (session.pendingPatch) {
       await session.pendingPatch.catch(() => {})
@@ -149,6 +191,8 @@ export class StreamingOutboundHook {
   }
 
   async cleanupPlaceholders(_connectorId: string, externalChatId: string): Promise<void> {
+    const session = this.sessions.get(externalChatId)
+    if (session) this.clearTicker(session)
     this.sessions.delete(externalChatId)
   }
 }
