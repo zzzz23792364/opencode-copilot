@@ -35,13 +35,33 @@ function readPid(): number | null {
   }
 }
 
+function findBridgeNodePid(): number | null {
+  // Find the actual node process running the bridge, not the npm wrapper
+  try {
+    const out = execSync(
+      "ps -eo pid,args --no-headers 2>/dev/null | grep 'node.*/tsx src/index.ts' | grep -v grep",
+      { encoding: 'utf-8', timeout: 3000 },
+    ).trim()
+    if (out) {
+      const pid = parseInt(out.split(/\s+/)[0], 10)
+      if (pid && pid !== process.pid) return pid
+    }
+  } catch { /* non-fatal */ }
+  return null
+}
+
 function findExistingBridge(): number | null {
+  // Prefer the actual node process over npm wrapper
+  const nodePid = findBridgeNodePid()
+  if (nodePid) return nodePid
+
   const pidFromFile = readPid()
   if (pidFromFile && isRunning(pidFromFile)) return pidFromFile
 
+  // Broader scan for any wrapper processes
   try {
     const out = execSync(
-      'ps -eo pid,args --no-headers 2>/dev/null | grep "tsx src/index.ts" | grep -v grep',
+      "ps -eo pid,args --no-headers 2>/dev/null | grep 'npx.*tsx src/index' | grep -v grep",
       { encoding: 'utf-8', timeout: 3000 },
     ).trim()
     if (out) {
@@ -90,65 +110,67 @@ function start() {
 
 function stop() {
   const pid = readPid()
-  if (!pid) {
-    console.log('Bridge is not running (no PID file)')
+  const nodePid = findBridgeNodePid()
+
+  const targetPid = pid || nodePid
+  if (!targetPid) {
+    console.log('Bridge is not running (no PID file and no process found)')
     return
   }
 
-  if (!isRunning(pid)) {
-    console.log(`PID ${pid} is not running, cleaning up`)
+  if (!isRunning(targetPid)) {
+    console.log(`PID ${targetPid} is not running, cleaning up`)
     try { unlinkSync(PID_FILE) } catch {}
     return
   }
 
   try {
-    process.kill(pid, 'SIGTERM')
-    console.log(`Sent SIGTERM to PID ${pid}`)
+    // Kill the actual Node process (the bridge itself)
+    if (nodePid && isRunning(nodePid)) {
+      process.kill(nodePid, 'SIGTERM')
+      console.log(`Sent SIGTERM to bridge (PID ${nodePid})`)
+    }
 
+    // Also kill the npm wrapper if it's still alive and different
+    if (pid && pid !== nodePid && isRunning(pid)) {
+      process.kill(pid, 'SIGTERM')
+      console.log(`Sent SIGTERM to npm wrapper (PID ${pid})`)
+    }
+
+    const target = nodePid || pid!
     let waited = 0
     while (waited < 5000) {
-      if (!isRunning(pid)) {
-        console.log(`PID ${pid} exited`)
+      if (!isRunning(target)) {
+        console.log(`PID ${target} exited`)
         break
       }
       sleep(300)
       waited += 300
     }
 
-    if (isRunning(pid)) {
-      console.log(`PID ${pid} still alive after 5s, force killing`)
-      try { process.kill(pid, 'SIGKILL') } catch {}
+    if (isRunning(target)) {
+      console.log(`PID ${target} still alive after 5s, force killing`)
+      try { process.kill(target, 'SIGKILL') } catch {}
     }
 
     try { unlinkSync(PID_FILE) } catch {}
   } catch {
-    console.error(`Failed to stop PID ${pid}`)
+    console.error(`Failed to stop PID ${targetPid}`)
   }
 }
 
 function status() {
+  const nodePid = findBridgeNodePid()
   const pid = readPid()
-  if (!pid) {
-    const orphanPid = findExistingBridge()
-    if (orphanPid) {
-      console.log(`Bridge: RUNNING (PID ${orphanPid}, orphaned — no PID file)`)
-      console.log(`Log: ${LOG_FILE}`)
-    } else {
-      console.log('Bridge: NOT RUNNING')
-    }
-    return
-  }
 
-  if (isRunning(pid)) {
-    console.log(`Bridge: RUNNING (PID ${pid})`)
+  if (nodePid) {
+    const storedInfo = pid && isRunning(pid) ? ` (stored: ${pid})` : ''
+    console.log(`Bridge: RUNNING (PID ${nodePid}${storedInfo})`)
     console.log(`Log: ${LOG_FILE}`)
+  } else if (pid) {
+    console.log(`Bridge: STALE (PID ${pid} not found)`)
   } else {
-    const orphanPid = findExistingBridge()
-    if (orphanPid) {
-      console.log(`Bridge: RUNNING (PID ${orphanPid}, PID file stale for ${pid})`)
-    } else {
-      console.log(`Bridge: STALE (PID ${pid} not found)`)
-    }
+    console.log('Bridge: NOT RUNNING')
   }
 }
 
