@@ -40,9 +40,10 @@ export function opencodeRun(
     log.info({ sessionId: opts.sessionId, cwd: opts.cwd, prompt: opts.prompt.slice(0, 50) }, 'spawning opencode')
 
     const proc = spawn('opencode', args, {
-      stdio: ['ignore', 'pipe', 'pipe'],
+      stdio: ['pipe', 'pipe', 'pipe'],
       cwd: opts.cwd || undefined,
     })
+    proc.stdin.end()
 
     let resolved = false
     let resolvedSessionId: string | undefined
@@ -72,6 +73,7 @@ export function opencodeRun(
     let lastOnText = Promise.resolve()
 
     rl.on('line', (line) => {
+      log.debug({ sessionId: opts.sessionId, raw: line.slice(0, 200) }, 'opencode NDJSON raw')
       try {
         const ev = JSON.parse(line) as {
           type: string; sessionID?: string
