@@ -38,27 +38,66 @@ export function createCommandHandler(): CommandHandler {
       return { text: `✅ 新会话已创建\nSession: ${sessionId}` }
     }
 
-    // /sessions
-    if (trimmed === '/sessions') {
+    // /list — alias for /sessions with numbered output
+    if (trimmed === '/list' || trimmed === '/sessions') {
       const stmt = getStmt(db)
       const sessions = stmt.list.all() as Array<{
         feishu_key: string; session_id: string; last_active: number
       }>
-      if (sessions.length === 0) return { text: '📭 暂无活动会话' }
-      const lines = sessions.map(s =>
-        `- ${s.feishu_key.slice(0, 16)}... → ${s.session_id} (${new Date(s.last_active).toLocaleTimeString('zh-CN')})`
-      )
-      return { text: `📋 活动会话 (${sessions.length}):\n${lines.join('\n')}` }
+      if (sessions.length === 0) return { text: '📭 暂无活动会话\n使用 /new 创建新会话' }
+      const lines = sessions.map((s, i) => {
+        const time = new Date(s.last_active).toLocaleTimeString('zh-CN')
+        const shortId = s.session_id.slice(0, 12) + '...'
+        const chat = s.feishu_key.slice(0, 12) + '...'
+        return `[${i + 1}] ${shortId}  (${chat})  ${time}`
+      })
+      return {
+        text: `📋 活动会话 (${sessions.length}):\n${lines.join('\n')}\n\n用 /use <编号> 绑定`,
+      }
     }
 
-    // /connect <session_id>
+    // /connect <session_id> — direct bind
     if (trimmed.startsWith('/connect ')) {
       const sessionId = trimmed.slice('/connect '.length).trim()
       if (!sessionId.startsWith('ses_')) return { text: '❌ 无效的 session ID' }
       const stmt = getStmt(db)
-      const now = Date.now()
-      stmt.upsert.run(chatId, sessionId, 'default', null, now, now)
+      stmt.upsert.run(chatId, sessionId, 'default', null, Date.now(), Date.now())
       return { text: `✅ 已绑定到 Session: ${sessionId}` }
+    }
+
+    // /use <N> | <session_id> | <prefix> — smart bind
+    if (trimmed.startsWith('/use ')) {
+      const query = trimmed.slice('/use '.length).trim()
+      const stmt = getStmt(db)
+      const sessions = stmt.list.all() as Array<{
+        feishu_key: string; session_id: string; last_active: number
+      }>
+
+      // Try numeric index
+      const index = parseInt(query, 10)
+      if (index >= 1 && index <= sessions.length) {
+        const sessionId = sessions[index - 1].session_id
+        stmt.upsert.run(chatId, sessionId, 'default', null, Date.now(), Date.now())
+        return { text: `✅ 已绑定到 #${index}: ${sessionId}` }
+      }
+
+      // Try exact ID match
+      if (query.startsWith('ses_')) {
+        stmt.upsert.run(chatId, query, 'default', null, Date.now(), Date.now())
+        return { text: `✅ 已绑定到 Session: ${query}` }
+      }
+
+      // Try prefix match
+      const matches = sessions.filter(s => s.session_id.startsWith(query))
+      if (matches.length === 1) {
+        stmt.upsert.run(chatId, matches[0].session_id, 'default', null, Date.now(), Date.now())
+        return { text: `✅ 已绑定到 Session: ${matches[0].session_id}` }
+      }
+      if (matches.length > 1) {
+        return { text: `❌ 多个匹配，请用完整 ID:\n${matches.map(s => `  ${s.session_id}`).join('\n')}` }
+      }
+
+      return { text: `❌ 未找到匹配: "${query}"\n用 /list 查看可用会话，或用 /connect ses_xxx 直接绑定` }
     }
 
     // /unbind
@@ -85,8 +124,9 @@ export function createCommandHandler(): CommandHandler {
       return {
         text: `🐱 **opencode-copilot**\n
 \`/new\` — 创建新会话
-\`/sessions\` — 查看活跃会话
-\`/connect <id>\` — 绑定到指定 session
+\`/list\` — 查看活跃会话（带编号）
+\`/use <编号|ID>\` — 绑定会话（编号/ID/前缀）
+\`/connect <id>\` — 直接绑定到指定 session
 \`/unbind\` — 取消绑定当前对话
 \`/where\` — 查看当前绑定信息
 \`/status\` — 同 /where
