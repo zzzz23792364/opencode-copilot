@@ -18,6 +18,7 @@ interface StreamingSession {
   startTime: number
   catDisplayName: string
   firstChunk: boolean
+  pendingPatch?: Promise<void>
 }
 
 export interface StreamingOutboundHookOptions {
@@ -119,7 +120,7 @@ export class StreamingOutboundHook {
 
     session.firstChunk = false
 
-    this.patchCard(session, `${accumulatedText} ▌`, { title: '💭 回复中...', template: 'blue' }, true)
+    session.pendingPatch = this.patchCard(session, `${accumulatedText} ▌`, { title: '💭 回复中...', template: 'blue' }, true)
       .then(() => {
         this.opts.log.debug({ externalChatId, len: accumulatedText.length, elapsed, delta }, '[StreamingOutbound] PATCH ok')
       })
@@ -134,6 +135,10 @@ export class StreamingOutboundHook {
     const session = this.sessions.get(externalChatId)
     if (!session) return
     this.sessions.delete(externalChatId)
+
+    if (session.pendingPatch) {
+      await session.pendingPatch.catch(() => {})
+    }
 
     const duration = Math.floor((Date.now() - session.startTime) / 1000)
     try {
