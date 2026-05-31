@@ -134,10 +134,16 @@ export function opencodeRun(
       }
 
       if (!fullText) {
-        log.warn({ sessionId: opts.sessionId, exit: code, rawLen: rawStdout.length, stderr: stderr.slice(0, 200) }, 'opencode produced no text')
+        log.warn({ sessionId: opts.sessionId, exit: code, rawLen: rawStdout.length, stderr: stderr.slice(0, 500) }, 'opencode produced no text')
       }
 
-      resolve({ text: fullText || '(no response)', sessionId: resolvedSessionId })
+      let fallbackText = '(no response)'
+      if (!fullText && stderr.includes('permission requested')) {
+        const m = stderr.match(/permission requested: (.*?);/)
+        if (m) fallbackText = `(no response — ${m[1]})`
+      }
+
+      resolve({ text: fullText || fallbackText, sessionId: resolvedSessionId })
     })
 
     proc.on('error', (err) => {
