@@ -15,7 +15,6 @@ export interface OpenCodeRunOptions {
   cwd?: string
   onText?: (text: string) => void | Promise<void>
   onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void
-  /** Called after spawn — receives an abort() function to kill the process */
   onStart?: (abort: () => void) => void
 }
 
@@ -43,13 +42,12 @@ export function opencodeRun(
       stdio: ['pipe', 'pipe', 'pipe'],
       cwd: opts.cwd || undefined,
     })
-    proc.stdin.end()
+    proc.stdin?.end()
 
     let resolved = false
     let resolvedSessionId: string | undefined
     let fullText = ''
 
-    // Expose abort capability
     if (opts.onStart) {
       opts.onStart(() => {
         if (resolved) return
@@ -59,7 +57,6 @@ export function opencodeRun(
       })
     }
 
-    // Timeout: kill after 10 minutes to prevent zombie processes
     const timeout = setTimeout(() => {
       if (!resolved) {
         resolved = true
@@ -72,8 +69,10 @@ export function opencodeRun(
     const rl = createInterface({ input: proc.stdout, crlfDelay: Infinity })
     let lastOnText = Promise.resolve()
 
+    let rawStdout = ''
+    proc.stdout.on('data', (chunk: Buffer) => { rawStdout += chunk.toString() })
+
     rl.on('line', (line) => {
-      log.debug({ sessionId: opts.sessionId, raw: line.slice(0, 200) }, 'opencode NDJSON raw')
       try {
         const ev = JSON.parse(line) as {
           type: string; sessionID?: string
@@ -95,9 +94,6 @@ export function opencodeRun(
           const toolName = ev.part.name || ev.part.type || 'tool'
           opts.onToolUse(toolName, 'running')
         }
-        if (ev.type !== 'text' && ev.type !== 'tool_use' && ev.type !== 'step_start' && ev.type !== 'step_finish') {
-          log.debug({ sessionId: opts.sessionId, type: ev.type, keys: Object.keys(ev) }, 'opencode NDJSON event')
-        }
       } catch {
         // skip malformed lines
       }
@@ -111,14 +107,35 @@ export function opencodeRun(
       resolved = true
       clearTimeout(timeout)
       await lastOnText.catch(() => {})
+
+      if (!fullText && rawStdout.trim()) {
+        log.info({ sessionId: opts.sessionId, rawLen: rawStdout.length }, 'readline missed lines, parsing raw stdout')
+        for (const line of rawStdout.split('\n')) {
+          try {
+            const ev = JSON.parse(line) as {
+              type: string; sessionID?: string
+              part?: { text?: string; name?: string; type?: string }
+            }
+            if (ev.type === 'step_start' && ev.sessionID && !resolvedSessionId) {
+              resolvedSessionId = ev.sessionID
+            }
+            if (ev.type === 'text' && ev.part?.text) {
+              fullText += ev.part.text
+            }
+          } catch { /* skip */ }
+        }
+      }
+
       if (code !== 0) {
         log.warn({ exit: code, stderr: stderr.slice(0, 300) }, 'opencode non-zero exit')
       } else if (stderr.trim()) {
         log.info({ sessionId: opts.sessionId, stderr: stderr.slice(0, 200) }, 'opencode stderr')
       }
-      if (!fullText && stderr.trim()) {
-        log.warn({ sessionId: opts.sessionId, stderr: stderr.slice(0, 500) }, 'opencode produced no text, stderr may contain diagnostics')
+
+      if (!fullText) {
+        log.warn({ sessionId: opts.sessionId, exit: code, rawLen: rawStdout.length, stderr: stderr.slice(0, 200) }, 'opencode produced no text')
       }
+
       resolve({ text: fullText || '(no response)', sessionId: resolvedSessionId })
     })
 
