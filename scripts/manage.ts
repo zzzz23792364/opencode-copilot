@@ -2,7 +2,7 @@
  * Bridge lifecycle manager — start / stop / status / restart.
  * Usage: tsx scripts/manage.ts <start|stop|status|restart>
  */
-import { spawn } from 'node:child_process'
+import { spawn, execSync } from 'node:child_process'
 import { existsSync, readFileSync, unlinkSync, writeFileSync, mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -36,6 +36,19 @@ function readPid(): number | null {
 }
 
 function start() {
+  // Kill any zombie bridge instances from previous restarts
+  try {
+    const result = execSync('pgrep -f "tsx src/index"', { encoding: 'utf-8' }).trim()
+    if (result) {
+      for (const pidStr of result.split('\n')) {
+        const pid = parseInt(pidStr, 10)
+        if (pid && pid !== process.pid) {
+          try { process.kill(pid, 'SIGTERM') } catch {}
+        }
+      }
+    }
+  } catch {}
+
   const existing = readPid()
   if (existing && isRunning(existing)) {
     console.log(`Bridge is already running (PID ${existing})`)
