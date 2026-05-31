@@ -70,6 +70,9 @@ export function createOutboundHandler(
         onError: (err: Error) => {
           log.warn({ err: String(err), chatId }, 'Streaming error')
         },
+        cancel: () => {
+          streamingHook.cleanupPlaceholders(connectorId, chatId)
+        },
       }
     },
   }

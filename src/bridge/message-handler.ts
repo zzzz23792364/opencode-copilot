@@ -66,6 +66,7 @@ export function createMessageHandler(
         registerRun(chatId, () => {
           aborted = true
           abort()
+          streaming.cancel()
         })
       },
     })
