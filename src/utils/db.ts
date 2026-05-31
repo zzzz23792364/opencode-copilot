@@ -42,6 +42,11 @@ export function createDatabase(dbPath: string): Database {
     forwarded_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
   )`)
 
+  db.exec(`CREATE TABLE IF NOT EXISTS allowed_groups (
+    chat_id TEXT PRIMARY KEY,
+    allowed_at INTEGER NOT NULL DEFAULT (unixepoch() * 1000)
+  )`)
+
   const r = db.query('PRAGMA table_info(feishu_sessions)').all() as Array<{ name: string }>
   log.info({ tables: r.map(x => x.name).join(', ') }, 'DB initialized')
 

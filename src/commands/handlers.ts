@@ -218,6 +218,22 @@ export function createCommandHandler(): CommandHandler {
       }
     }
 
+    // /allow-group — add current group chat to whitelist
+    if (trimmed === '/allow-group') {
+      try {
+        db.run('INSERT OR IGNORE INTO allowed_groups (chat_id, allowed_at) VALUES (?, ?)', [chatId, Date.now()])
+        return { kind: 'reply', text: `✅ 群聊已授权\nChat: ${chatId.slice(0, 16)}...` }
+      } catch {
+        return { kind: 'reply', text: '❌ 授权失败' }
+      }
+    }
+
+    // /deny-group — remove group chat from whitelist
+    if (trimmed === '/deny-group') {
+      db.run('DELETE FROM allowed_groups WHERE chat_id = ?', [chatId])
+      return { kind: 'reply', text: `✅ 已取消授权\nChat: ${chatId.slice(0, 16)}...` }
+    }
+
     // /commands /help
     if (trimmed === '/commands' || trimmed === '/help') {
       return {
@@ -232,6 +248,8 @@ export function createCommandHandler(): CommandHandler {
 \`/thread <id> <msg>\` — 绑定并直接发消息
 \`/connect <id>\` — 直接绑定
 \`/unbind\` — 取消绑定
+\`/allow-group\` — 授权当前群聊使用 bot
+\`/deny-group\` — 取消群聊授权
 \`/where\` / \`/status\` — 查看当前绑定信息
 \`/commands\` / \`/help\` — 命令列表`,
       }

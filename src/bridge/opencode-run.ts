@@ -30,7 +30,7 @@ export function opencodeRun(
     : promptOrOpts
 
   return new Promise((resolve, reject) => {
-    const args = ['run', '--format', 'json']
+    const args = ['run', '-y', '--format', 'json']
     if (opts.sessionId) args.push('--session', opts.sessionId)
     args.push(opts.prompt)
 
@@ -44,6 +44,16 @@ export function opencodeRun(
     let resolved = false
     let resolvedSessionId: string | undefined
     let fullText = ''
+
+    // Timeout: kill after 5 minutes to prevent zombie processes
+    const timeout = setTimeout(() => {
+      if (!resolved) {
+        resolved = true
+        proc.kill('SIGKILL')
+        log.warn({ sessionId: opts.sessionId }, 'opencode timed out after 5min, killed')
+        resolve({ text: fullText || '(timeout)', sessionId: resolvedSessionId })
+      }
+    }, 300_000)
 
     const rl = createInterface({ input: proc.stdout, crlfDelay: Infinity })
     let lastOnText = Promise.resolve()
@@ -81,6 +91,7 @@ export function opencodeRun(
     proc.on('close', async (code) => {
       if (resolved) return
       resolved = true
+      clearTimeout(timeout)
       await lastOnText.catch(() => {})
       if (code !== 0) log.warn({ exit: code, stderr: stderr.slice(0, 300) }, 'opencode non-zero exit')
       resolve({ text: fullText || '(no response)', sessionId: resolvedSessionId })
@@ -89,6 +100,7 @@ export function opencodeRun(
     proc.on('error', (err) => {
       if (resolved) return
       resolved = true
+      clearTimeout(timeout)
       reject(err)
     })
   })

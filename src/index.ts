@@ -15,7 +15,6 @@ import { StreamingOutboundHook } from './bridge/StreamingOutboundHook.js'
 import { opencodeRun } from './bridge/opencode-run.js'
 import { MediaService } from './bridge/media-service.js'
 import { createCommandHandler } from './commands/handlers.js'
-import { startPoller } from './feishu-poller.js'
 import { buildSessionListCard, buildProjectListCard, sendCard, handleCardAction } from './feishu/card-interaction.js'
 import type { FeishuInboundMessage } from './feishu/FeishuAdapter.js'
 import type { Database } from 'bun:sqlite'
@@ -86,6 +85,15 @@ async function main() {
         return
       }
 
+      // Group chat whitelist check
+      if (parsed.chatType === 'group') {
+        const allowed = db.query('SELECT 1 FROM allowed_groups WHERE chat_id = ?').get(parsed.chatId)
+        if (!allowed) {
+          log.info({ chatId: parsed.chatId }, 'Group not in whitelist, ignoring')
+          return
+        }
+      }
+
       // Add reaction as instant feedback
       try {
         await adapter.addReaction(parsed.messageId, 'THUMBSUP')
@@ -147,10 +155,6 @@ async function main() {
   })
   ws.start()
 
-  // Start TUI→Feishu poller
-  const stopPoller = startPoller({ db, adapter, intervalMs: 3000 })
-  log.info('TUI→Feishu poller started')
-
   // Graceful shutdown: wait for inflight requests to finish
   let shutdownTimer: ReturnType<typeof setTimeout> | null = null
 
@@ -158,8 +162,6 @@ async function main() {
     if (shuttingDown) return
     shuttingDown = true
     log.info({ inflightCount }, 'Shutting down...')
-
-    stopPoller()
 
     // Force exit after 30s if requests don't finish
     shutdownTimer = setTimeout(() => {
