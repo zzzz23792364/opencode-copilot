@@ -7,7 +7,7 @@ import type { IStreamableOutboundAdapter } from '../feishu/FeishuAdapter.js'
 import { pickReceiptLine } from '../feishu/feishu-receipt-lines.js'
 
 const DEFAULT_UPDATE_INTERVAL_MS = 2000
-const DEFAULT_MIN_DELTA_CHARS = 200
+const DEFAULT_MIN_DELTA_CHARS = 50
 
 interface StreamingSession {
   readonly externalChatId: string
@@ -85,14 +85,16 @@ export class StreamingOutboundHook {
     const adapter = this.opts.adapters.get(connectorId)
     if (!adapter?.editMessage || !session.platformMessageId) return
 
-    try {
-      await adapter.editMessage(session.externalChatId, session.platformMessageId, `${accumulatedText} ▌`)
-      this.opts.log.debug({ externalChatId, len: accumulatedText.length, elapsed }, '[StreamingOutbound] PATCH ok')
-      session.lastUpdateAt = now
-      session.lastContentLength = accumulatedText.length
-    } catch (err) {
-      this.opts.log.warn({ err: String(err) }, '[StreamingOutbound] editMessage chunk failed')
-    }
+    // Fire and forget — don't block the pipeline waiting for Feishu PATCH
+    adapter.editMessage(session.externalChatId, session.platformMessageId, `${accumulatedText} ▌`)
+      .then(() => {
+        this.opts.log.debug({ externalChatId, len: accumulatedText.length, elapsed }, '[StreamingOutbound] PATCH ok')
+      })
+      .catch((err) => {
+        this.opts.log.warn({ err: String(err) }, '[StreamingOutbound] editMessage chunk failed')
+      })
+    session.lastUpdateAt = now
+    session.lastContentLength = accumulatedText.length
   }
 
   async onStreamEnd(connectorId: string, externalChatId: string, finalText: string): Promise<void> {
