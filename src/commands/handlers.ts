@@ -10,8 +10,16 @@ const log = createLogger('commands')
 export type CommandResult =
   | { kind: 'reply'; text: string }
   | { kind: 'thread'; sessionId: string; message: string }
-  | { kind: 'card'; card: object; context: { actionType: string; sessionList: Array<{ id: string; title: string | null }> } }
+  | { kind: 'card'; card: object; context: CardContext }
   | null
+
+export interface CardContext {
+  actionType: string
+  sessionList?: Array<{ id: string; title: string | null }>
+  projectList?: Array<{ directory: string; count: number }>
+  projectName?: string
+  currentCwd?: string | null
+}
 
 export interface CommandHandler {
   handle(text: string, chatId: string, senderId: string, sessionManager: SessionManager, db: Database): Promise<CommandResult>
@@ -89,7 +97,7 @@ export function createCommandHandler(): CommandHandler {
       return {
         kind: 'card',
         card: null as any,
-        context: { actionType: 'list_projects', sessionList: [] },
+        context: { actionType: 'list_projects', projectList: projects, currentCwd },
       }
     }
 
@@ -140,7 +148,7 @@ export function createCommandHandler(): CommandHandler {
       return {
         kind: 'card',
         card: null as any, // card built in index.ts
-        context: { actionType: 'list_sessions', sessionList: sessions },
+        context: { actionType: 'list_sessions', sessionList: sessions, projectName: dirName, currentCwd },
       }
     }
 

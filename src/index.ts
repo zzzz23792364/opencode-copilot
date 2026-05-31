@@ -113,9 +113,14 @@ async function main() {
           const result = await opencodeRun(cmdResult.message, cmdResult.sessionId, session?.opencode_cwd || undefined)
           await outbound.sendFormatted(parsed.chatId, result.text)
         } else if (cmdResult.kind === 'card') {
-          const projectName = parsed.text === '/list -all' ? 'all' : 'local'
-          const card = buildSessionListCard(parsed.chatId, cmdResult.context.sessionList, projectName)
-          await sendCard(adapter, parsed.chatId, card, cmdResult.context).catch(() => {})
+          const ctx = cmdResult.context
+          if (ctx.actionType === 'list_projects') {
+            const card = buildProjectListCard(parsed.chatId, ctx.projectList || [], ctx.currentCwd || null)
+            await sendCard(adapter, parsed.chatId, card, ctx).catch(() => {})
+          } else {
+            const card = buildSessionListCard(parsed.chatId, ctx.sessionList || [], ctx.projectName || '')
+            await sendCard(adapter, parsed.chatId, card, ctx).catch(() => {})
+          }
         } else {
           outbound.sendFormatted(parsed.chatId, cmdResult.text, '命令结果').catch(() => {})
         }
