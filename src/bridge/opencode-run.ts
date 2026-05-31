@@ -9,23 +9,47 @@ export interface RunResult {
   sessionId?: string
 }
 
-export function opencodeRun(prompt: string, sessionId?: string): Promise<RunResult> {
+export interface OpenCodeRunOptions {
+  prompt: string
+  sessionId?: string
+  cwd?: string
+  /** Callback for each text event as it arrives from NDJSON */
+  onText?: (text: string) => void | Promise<void>
+}
+
+export function opencodeRun(opts: OpenCodeRunOptions & { prompt: string; sessionId?: string; cwd?: string; onText?: (text: string) => void | Promise<void> }): Promise<RunResult>
+export function opencodeRun(prompt: string, sessionId?: string, cwd?: string, onText?: (text: string) => void | Promise<void>): Promise<RunResult>
+export function opencodeRun(
+  promptOrOpts: string | OpenCodeRunOptions,
+  sessionId?: string,
+  cwd?: string,
+  onText?: (text: string) => void | Promise<void>,
+): Promise<RunResult> {
+  // Normalize overloads
+  const opts: OpenCodeRunOptions = typeof promptOrOpts === 'string'
+    ? { prompt: promptOrOpts, sessionId, cwd, onText }
+    : promptOrOpts
+
   return new Promise((resolve, reject) => {
     const args = ['run', '--format', 'json']
-    if (sessionId) args.push('--session', sessionId)
-    args.push(prompt)
+    if (opts.sessionId) args.push('--session', opts.sessionId)
+    args.push(opts.prompt)
 
-    log.info({ sessionId, prompt: prompt.slice(0, 50) }, 'spawning opencode')
+    log.info({ sessionId: opts.sessionId, prompt: opts.prompt.slice(0, 50) }, 'spawning opencode')
 
     const proc = spawn('opencode', args, {
       stdio: ['ignore', 'pipe', 'pipe'],
+      cwd: opts.cwd || undefined,
     })
 
     let resolved = false
     let resolvedSessionId: string | undefined
-    let text = ''
+    let fullText = ''
 
     const rl = createInterface({ input: proc.stdout, crlfDelay: Infinity })
+    // Track last-onText promise for sequential delivery
+    let lastOnText = Promise.resolve()
+
     rl.on('line', (line) => {
       try {
         const ev = JSON.parse(line) as { type: string; sessionID?: string; part?: { text?: string } }
@@ -33,7 +57,14 @@ export function opencodeRun(prompt: string, sessionId?: string): Promise<RunResu
           resolvedSessionId = ev.sessionID
         }
         if (ev.type === 'text' && ev.part?.text) {
-          text += ev.part.text
+          fullText += ev.part.text
+          // Fire streaming callback (chain to keep order)
+          if (opts.onText) {
+            const chunk = ev.part.text
+            lastOnText = lastOnText.then(() => {
+              try { return opts.onText!(chunk) } catch { /* ignore callback errors */ }
+            })
+          }
         }
       } catch {
         // skip malformed lines
@@ -43,11 +74,13 @@ export function opencodeRun(prompt: string, sessionId?: string): Promise<RunResu
     let stderr = ''
     proc.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString() })
 
-    proc.on('close', (code) => {
+    proc.on('close', async (code) => {
       if (resolved) return
       resolved = true
+      // Wait for last onText callback to finish
+      await lastOnText.catch(() => {})
       if (code !== 0) log.warn({ exit: code, stderr: stderr.slice(0, 300) }, 'opencode non-zero exit')
-      resolve({ text: text || '(no response)', sessionId: resolvedSessionId })
+      resolve({ text: fullText || '(no response)', sessionId: resolvedSessionId })
     })
 
     proc.on('error', (err) => {

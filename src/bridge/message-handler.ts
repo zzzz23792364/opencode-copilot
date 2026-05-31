@@ -49,15 +49,24 @@ export function createMessageHandler(
 
     const { sessionId, cwd } = await sessionManager.getOrCreate(chatId)
 
-    log.info({ chatId, sessionId }, 'Running opencode')
-    const result = await opencodeRun(prompt, sessionId, cwd || undefined)
+    log.info({ chatId, sessionId }, 'Running opencode (streaming)')
+
+    // Start streaming: placeholder card appears immediately
+    const streaming = await outbound.sendStreaming(chatId, 'feishu')
+
+    const result = await opencodeRun(
+      prompt,
+      sessionId,
+      cwd || undefined,
+      (chunk) => { streaming.onChunk(chunk).catch(() => {}) },
+    )
 
     if (result.sessionId && result.sessionId !== sessionId) {
       log.info({ old: sessionId, new: result.sessionId }, 'Session ID changed')
     }
 
     log.info({ chatId, replyLen: result.text.length }, 'Got reply')
-    await outbound.sendFormatted(chatId, result.text)
+    await streaming.onEnd(result.text)
   }
 
   async function handle(parsed: FeishuInboundMessage): Promise<void> {
