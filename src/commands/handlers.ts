@@ -196,10 +196,10 @@ export function createCommandHandler(): CommandHandler {
       return { kind: 'reply', text: `❌ 未找到匹配: "${query}"\n项目: ${dirName}\n用 /list 查看可用会话` }
     }
 
-    // /plan — switch to plan mode (read-only)
+    // /plan — switch to plan mode (read-only, requires opencode >= 1.16)
     if (trimmed === '/plan') {
       db.run('UPDATE feishu_sessions SET mode = \'plan\', last_active = ? WHERE feishu_key = ?', [Date.now(), chatId])
-      return { kind: 'reply', text: `✅ 已切换为 Plan 模式（只读分析）` }
+      return { kind: 'reply', text: `✅ 已切换为 Plan 模式\n注意：当前 opencode v1.15.13 不支持 --plan，功能已登记待后续版本支持` }
     }
 
     // /build — switch to build mode (full access)

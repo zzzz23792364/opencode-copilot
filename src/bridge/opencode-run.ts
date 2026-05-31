@@ -33,7 +33,6 @@ export function opencodeRun(
 
   return new Promise((resolve, reject) => {
     const args = ['run', '-y', '--format', 'json']
-    if ((mode || 'build') === 'plan') args.push('--plan')
     if (opts.sessionId) args.push('--session', opts.sessionId)
     args.push(opts.prompt)
 
