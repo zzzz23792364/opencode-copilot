@@ -9,6 +9,7 @@ export interface SessionRow {
   agent: string
   model: string | null
   opencode_cwd: string | null
+  flags: string | null
   created_at: number
   last_active: number
 }
@@ -30,6 +31,7 @@ export function createDatabase(dbPath: string) {
 
   // Migration
   try { db.exec('ALTER TABLE feishu_sessions ADD COLUMN opencode_cwd TEXT') } catch {}
+  try { db.exec('ALTER TABLE feishu_sessions ADD COLUMN flags TEXT') } catch {}
 
   db.exec(`CREATE TABLE IF NOT EXISTS dedup (
     message_id TEXT PRIMARY KEY,

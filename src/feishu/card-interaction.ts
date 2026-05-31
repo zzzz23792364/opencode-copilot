@@ -173,6 +173,11 @@ export async function handleCardAction(
       break
     }
 
+    case 'cf_toggle': {
+      await handleToggleFlag(action, adapter, db)
+      break
+    }
+
     default:
       log.warn({ actionType }, 'Unknown card action')
   }
@@ -262,6 +267,69 @@ async function handleProjectSelect(
     if (sessions.length > 0) {
       const card = buildSessionListCard(action.chatId, sessions, dirName!)
       await sendCard(adapter, action.chatId, card, { actionType: 'list_sessions' })
+    }
+  }
+}
+
+/**
+ * Build /cf interactive card with toggle buttons for opencode run flags.
+ */
+export function buildConfigCard(chatId: string, currentFlagsJson: string | null): object {
+  let flags: Record<string, boolean> = {}
+  try { if (currentFlagsJson) flags = JSON.parse(currentFlagsJson) } catch {}
+
+  const dangerOn = !!flags.danger
+
+  return {
+    config: { update_multi: true },
+    header: {
+      title: { tag: 'plain_text' as const, content: '⚙ 运行配置' },
+      template: 'blue' as const,
+    },
+    elements: [
+      {
+        tag: 'markdown' as const,
+        content: `**--danger** 允许危险操作（跳过权限确认）\n当前: ${dangerOn ? '✅ 开启' : '❌ 关闭'}`,
+      },
+      {
+        tag: 'action' as const,
+        actions: [{
+          tag: 'button' as const,
+          text: { tag: 'plain_text' as const, content: dangerOn ? '关闭 --danger' : '开启 --danger' },
+          type: dangerOn ? 'default' as const : 'primary' as const,
+          value: { action: 'cf_toggle', flag: 'danger', chat_id: chatId },
+        }],
+      },
+    ],
+  }
+}
+
+/** Handle cf_toggle card action — flip a flag and repatch the card. */
+async function handleToggleFlag(
+  action: FeishuCardAction & { open_message_id?: string },
+  adapter: FeishuAdapter,
+  db: Database,
+): Promise<void> {
+  const flag = action.actionValue.flag as string
+  const openMessageId = (action as any).open_message_id as string | undefined
+  if (!flag) return
+
+  const stmt = getSessionStmt(db)
+  const row = stmt.get.get(action.chatId) as { flags: string | null } | undefined
+  const current: Record<string, boolean> = row?.flags ? JSON.parse(row.flags) : {}
+
+  current[flag] = !current[flag]
+
+  const newFlags = JSON.stringify(current)
+  db.prepare('UPDATE feishu_sessions SET flags = ?, last_active = ? WHERE feishu_key = ?').run(newFlags, Date.now(), action.chatId)
+
+  log.info({ chatId: action.chatId, flag, value: current[flag] }, 'Card: flag toggled')
+
+  if (openMessageId) {
+    try {
+      await patchCard(adapter, openMessageId, buildConfigCard(action.chatId, newFlags) as any)
+    } catch (err) {
+      log.warn({ err: String(err) }, 'Failed to patch config card')
     }
   }
 }

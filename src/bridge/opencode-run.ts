@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import { createInterface } from 'node:readline'
 import { createLogger } from '../utils/logger.js'
+import type { RunFlags } from './session-manager.js'
 
 const log = createLogger('opencode-run')
 
@@ -13,6 +14,7 @@ export interface OpenCodeRunOptions {
   prompt: string
   sessionId?: string
   cwd?: string
+  flags?: RunFlags
   onText?: (text: string) => void | Promise<void>
   onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void
   onStart?: (abort: () => void) => void
@@ -33,6 +35,7 @@ export function opencodeRun(
 
   return new Promise((resolve, reject) => {
     const args = ['run', '--format', 'json']
+    if (opts.flags?.danger) args.push('--danger')
     if (opts.sessionId) args.push('--session', opts.sessionId)
     args.push(opts.prompt)
 

@@ -5,10 +5,19 @@ import { getSessionStmt, type SessionRow } from '../utils/db.js'
 
 const log = createLogger('session-manager')
 
+export interface RunFlags {
+  danger?: boolean
+}
+
 export interface SessionManager {
-  getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null }>
+  getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null; flags: RunFlags }>
   getSession(feishuKey: string): SessionRow | null
   touch(feishuKey: string): void
+}
+
+function parseFlags(raw: string | null): RunFlags {
+  if (!raw) return {}
+  try { return JSON.parse(raw) } catch { return {} }
 }
 
 export function createSessionManager(db: Database): SessionManager {
@@ -22,16 +31,15 @@ export function createSessionManager(db: Database): SessionManager {
     stmt.touch.run(Date.now(), feishuKey)
   }
 
-  async function getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null }> {
+  async function getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null; flags: RunFlags }> {
     const existing = getSession(feishuKey)
     if (existing && existing.session_id !== 'placeholder') {
       stmt.touch.run(Date.now(), feishuKey)
       const resolvedCwd = existing.opencode_cwd || cwd || null
       log.info({ feishuKey, sessionId: existing.session_id, cwd: resolvedCwd }, 'Reusing existing session')
-      return { sessionId: existing.session_id, cwd: resolvedCwd }
+      return { sessionId: existing.session_id, cwd: resolvedCwd, flags: parseFlags(existing.flags) }
     }
 
-    // No existing mapping — discover from opengcode
     const spawnCwd = cwd || undefined
     const sessionId = await new Promise<string>((resolve, reject) => {
       const proc = spawn('opencode', ['session', 'list', '--format', 'json', '-n', '1'], { cwd: spawnCwd })
@@ -50,14 +58,13 @@ export function createSessionManager(db: Database): SessionManager {
       proc.on('error', reject)
     })
 
-    // Store with optional cwd
     const upsertCwd = cwd || null
     db.prepare(
-      'INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?, ?)'
-    ).run(feishuKey, sessionId, 'default', null, upsertCwd, Date.now(), Date.now())
+      'INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, flags, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(feishuKey, sessionId, 'default', null, upsertCwd, null, Date.now(), Date.now())
 
     log.info({ feishuKey, sessionId, cwd }, 'Session mapping created from discovery')
-    return { sessionId, cwd: upsertCwd }
+    return { sessionId, cwd: upsertCwd, flags: {} }
   }
 
   return { getOrCreate, getSession, touch }

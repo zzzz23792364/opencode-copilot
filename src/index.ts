@@ -16,7 +16,7 @@ import { StreamingOutboundHook } from './bridge/StreamingOutboundHook.js'
 import { opencodeRun } from './bridge/opencode-run.js'
 import { MediaService } from './bridge/media-service.js'
 import { createCommandHandler } from './commands/handlers.js'
-import { buildSessionListCard, buildProjectListCard, sendCard, handleCardAction } from './feishu/card-interaction.js'
+import { buildSessionListCard, buildProjectListCard, buildConfigCard, sendCard, handleCardAction } from './feishu/card-interaction.js'
 import type { FeishuInboundMessage, FeishuCardAction } from './feishu/FeishuAdapter.js'
 import type { Database } from 'better-sqlite3'
 
@@ -115,7 +115,11 @@ async function main() {
           await outbound.sendFormatted(parsed.chatId, result.text)
         } else if (cmdResult.kind === 'card') {
           const ctx = cmdResult.context
-          if (ctx.actionType === 'list_projects' || ctx.actionType === 'sw_projects') {
+          if (ctx.actionType === 'cf_config') {
+            const currentFlags = sessionManager.getSession(parsed.chatId)?.flags
+            const card = buildConfigCard(parsed.chatId, currentFlags || null)
+            await sendCard(adapter, parsed.chatId, card, ctx).catch(() => {})
+          } else if (ctx.actionType === 'list_projects' || ctx.actionType === 'sw_projects') {
             const card = buildProjectListCard(parsed.chatId, ctx.projectList || [], ctx.currentCwd || null)
             await sendCard(adapter, parsed.chatId, card, ctx).catch(() => {})
           } else {

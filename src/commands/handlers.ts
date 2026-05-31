@@ -15,6 +15,7 @@ export type CommandResult =
 
 export interface CardContext {
   actionType: string
+  chatId?: string
   sessionList?: Array<{ id: string; title: string | null }>
   projectList?: Array<{ directory: string; count: number }>
   projectName?: string
@@ -110,6 +111,15 @@ export function createCommandHandler(): CommandHandler {
         kind: 'card',
         card: null as any,
         context: { actionType: 'sw_projects', projectList: projects, currentCwd },
+      }
+    }
+
+    // /cf — configure opencode run flags (interactive card)
+    if (trimmed === '/cf') {
+      return {
+        kind: 'card',
+        card: null as any,
+        context: { actionType: 'cf_config', chatId },
       }
     }
 
@@ -247,6 +257,7 @@ export function createCommandHandler(): CommandHandler {
         text: `**opencode-copilot**\n
 \`/new\` — 创建新会话
 \`/sw\` — 快速切换项目和会话（两步卡片）
+\`/cf\` — 配置 opencode run 参数（--danger 等）
 \`/projects\` — 查看所有项目目录
 \`/project <编号>\` — 选择项目目录
 \`/list\` — 查看当前项目的会话
