@@ -73,10 +73,12 @@ export function createCommandHandler(): CommandHandler {
 
     // /new
     if (trimmed === '/new' || trimmed.startsWith('/new ')) {
+      const oldCwd = getCwd(db, chatId)
       getStmt(db).remove.run(chatId)
-      const { sessionId } = await sessionManager.getOrCreate(chatId)
-      log.info({ chatId, sessionId }, 'Created new session via /new')
-      return { kind: 'reply', text: `✅ 新会话已创建\nSession: ${sessionId}` }
+      const { sessionId } = await sessionManager.getOrCreate(chatId, oldCwd || undefined)
+      log.info({ chatId, sessionId, cwd: oldCwd }, 'Created new session via /new')
+      const cwdNote = oldCwd ? `\n项目: ${oldCwd.split('/').pop()}` : ''
+      return { kind: 'reply', text: `✅ 新会话已创建\nSession: ${sessionId}${cwdNote}` }
     }
 
     // /projects — list all project directories (interactive card)
