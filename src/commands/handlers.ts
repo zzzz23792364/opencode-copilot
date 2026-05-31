@@ -62,22 +62,35 @@ export function createCommandHandler(): CommandHandler {
       return { kind: 'reply', text: `✅ 新会话已创建\nSession: ${sessionId}` }
     }
 
-    // /list /sessions
+    // /list /sessions — shows opencode session titles
     if (trimmed === '/list' || trimmed === '/sessions') {
       const stmt = getStmt(db)
-      const sessions = stmt.list.all() as Array<{
+      const localSessions = stmt.list.all() as Array<{
         feishu_key: string; session_id: string; last_active: number
       }>
-      if (sessions.length === 0) return { kind: 'reply', text: '📭 暂无活动会话\n使用 /new 创建新会话' }
-      const lines = sessions.map((s, i) => {
+      // Get opencode titles
+      const opencodeSessions = await getOpendcodeSessions()
+      const titleMap = new Map(opencodeSessions.map(s => [s.id, s.title]))
+
+      if (localSessions.length === 0) {
+        // Show all opencode sessions even if no binding exists
+        if (opencodeSessions.length === 0) return { kind: 'reply', text: '📭 暂无活动会话\n使用 /new 创建新会话' }
+        const lines = opencodeSessions.slice(0, 10).map((s, i) => {
+          const shortId = s.id.slice(0, 12) + '...'
+          return `[${i + 1}] ${s.title || shortId}`
+        })
+        return { kind: 'reply', text: `📋 可用会话 (${opencodeSessions.length}):\n${lines.join('\n')}\n\n用 /use <编号> 绑定` }
+      }
+
+      const lines = localSessions.map((s, i) => {
         const time = new Date(s.last_active).toLocaleTimeString('zh-CN')
         const shortId = s.session_id.slice(0, 12) + '...'
-        const chat = s.feishu_key.slice(0, 12) + '...'
-        return `[${i + 1}] ${shortId}  (${chat})  ${time}`
+        const title = titleMap.get(s.session_id) || shortId
+        return `[${i + 1}] ${title}  ${time}`
       })
       return {
         kind: 'reply',
-        text: `📋 活动会话 (${sessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|ID|标题> 绑定`,
+        text: `📋 活动会话 (${localSessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定`,
       }
     }
 
