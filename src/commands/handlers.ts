@@ -196,18 +196,6 @@ export function createCommandHandler(): CommandHandler {
       return { kind: 'reply', text: `❌ 未找到匹配: "${query}"\n项目: ${dirName}\n用 /list 查看可用会话` }
     }
 
-    // /plan — switch to plan mode (read-only, requires opencode >= 1.16)
-    if (trimmed === '/plan') {
-      db.run('UPDATE feishu_sessions SET mode = \'plan\', last_active = ? WHERE feishu_key = ?', [Date.now(), chatId])
-      return { kind: 'reply', text: `✅ 已切换为 Plan 模式\n注意：当前 opencode v1.15.13 不支持 --plan，功能已登记待后续版本支持` }
-    }
-
-    // /build — switch to build mode (full access)
-    if (trimmed === '/build') {
-      db.run('UPDATE feishu_sessions SET mode = \'build\', last_active = ? WHERE feishu_key = ?', [Date.now(), chatId])
-      return { kind: 'reply', text: `✅ 已切换为 Build 模式（完整权限）` }
-    }
-
     // /unbind
     if (trimmed === '/unbind') {
       const existing = sessionManager.getSession(chatId)
@@ -222,7 +210,7 @@ export function createCommandHandler(): CommandHandler {
       const currentCwd = getCwd(db, chatId) || process.cwd()
       const dirName = currentCwd.split('/').pop()
       const bindText = existing
-        ? `Session: ${existing.session_id}\n最近活跃: ${new Date(existing.last_active).toLocaleString('zh-CN')}\n模式: ${existing.mode || 'build'}`
+        ? `Session: ${existing.session_id}\n最近活跃: ${new Date(existing.last_active).toLocaleString('zh-CN')}`
         : '未绑定会话'
       return {
         kind: 'reply',
@@ -244,8 +232,6 @@ export function createCommandHandler(): CommandHandler {
 \`/thread <id> <msg>\` — 绑定并直接发消息
 \`/connect <id>\` — 直接绑定
 \`/unbind\` — 取消绑定
-\`/plan\` — 切换为 Plan 模式（只读）
-\`/build\` — 切换为 Build 模式（默认）
 \`/where\` / \`/status\` — 查看当前绑定信息
 \`/commands\` / \`/help\` — 命令列表`,
       }

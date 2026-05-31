@@ -18,14 +18,13 @@ export interface OpenCodeRunOptions {
 }
 
 export function opencodeRun(opts: OpenCodeRunOptions & { prompt: string; sessionId?: string }): Promise<RunResult>
-export function opencodeRun(prompt: string, sessionId?: string, cwd?: string, onText?: (text: string) => void, onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void, mode?: string): Promise<RunResult>
+export function opencodeRun(prompt: string, sessionId?: string, cwd?: string, onText?: (text: string) => void, onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void): Promise<RunResult>
 export function opencodeRun(
   promptOrOpts: string | OpenCodeRunOptions,
   sessionId?: string,
   cwd?: string,
   onText?: (text: string) => void,
   onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void,
-  mode?: string,
 ): Promise<RunResult> {
   const opts: OpenCodeRunOptions = typeof promptOrOpts === 'string'
     ? { prompt: promptOrOpts, sessionId, cwd, onText, onToolUse }

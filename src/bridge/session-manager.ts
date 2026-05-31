@@ -6,7 +6,7 @@ import { getSessionStmt, type SessionRow } from '../utils/db.js'
 const log = createLogger('session-manager')
 
 export interface SessionManager {
-  getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null; mode: string }>
+  getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null }>
   getSession(feishuKey: string): SessionRow | null
   touch(feishuKey: string): void
 }
@@ -29,7 +29,7 @@ export function createSessionManager(db: Database): SessionManager {
       const resolvedCwd = existing.opencode_cwd || cwd || null
       const mode = existing.mode || 'build'
       log.info({ feishuKey, sessionId: existing.session_id }, 'Reusing existing session')
-      return { sessionId: existing.session_id, cwd: resolvedCwd, mode }
+      return { sessionId: existing.session_id, cwd: resolvedCwd }
     }
 
     // No existing mapping — discover from opengcode
@@ -54,12 +54,12 @@ export function createSessionManager(db: Database): SessionManager {
     // Store with optional cwd
     const upsertCwd = cwd || null
     db.run(
-      'INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, mode, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-      [feishuKey, sessionId, 'default', null, upsertCwd, 'build', Date.now(), Date.now()]
+      'INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [feishuKey, sessionId, 'default', null, upsertCwd, Date.now(), Date.now()]
     )
 
     log.info({ feishuKey, sessionId, cwd }, 'Session mapping created from discovery')
-    return { sessionId, cwd: upsertCwd, mode: 'build' }
+    return { sessionId, cwd: upsertCwd }
   }
 
   return { getOrCreate, getSession, touch }
