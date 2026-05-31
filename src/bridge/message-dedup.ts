@@ -10,7 +10,7 @@ export interface MessageDedup {
   cleanup(): void
 }
 
-export function createMessageDedup(db: Database, ttlMs = 60_000): MessageDedup {
+export function createMessageDedup(db: Database, ttlMs = 300_000): MessageDedup {
   const stmt = getDedupStmt(db)
 
   function isDuplicate(messageId: string): boolean {
