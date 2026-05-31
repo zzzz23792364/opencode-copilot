@@ -62,35 +62,50 @@ export function createCommandHandler(): CommandHandler {
       return { kind: 'reply', text: `✅ 新会话已创建\nSession: ${sessionId}` }
     }
 
-    // /list /sessions — shows opencode session titles
-    if (trimmed === '/list' || trimmed === '/sessions') {
+    // /list [-all] — list sessions (default: bound; -all: all opencode sessions)
+    if (trimmed === '/list' || trimmed === '/sessions' || trimmed === '/list -all' || trimmed === '/list --all') {
+      const allMode = trimmed.includes('-all')
       const stmt = getStmt(db)
-      const localSessions = stmt.list.all() as Array<{
-        feishu_key: string; session_id: string; last_active: number
-      }>
-      // Get opencode titles
       const opencodeSessions = await getOpendcodeSessions()
       const titleMap = new Map(opencodeSessions.map(s => [s.id, s.title]))
 
+      if (allMode) {
+        // Show ALL opencode sessions, mark bound ones
+        const localSessions = stmt.list.all() as Array<{ feishu_key: string; session_id: string }>
+        const boundSet = new Set(localSessions.map(s => s.session_id))
+        if (opencodeSessions.length === 0) return { kind: 'reply', text: '📭 暂无 opencode 会话' }
+        const lines = opencodeSessions.slice(0, 15).map((s, i) => {
+          const isBound = boundSet.has(s.id) ? ' ✓' : ''
+          const shortId = s.id.slice(0, 10) + '...'
+          return `[${i + 1}] ${s.title || shortId}${isBound}`
+        })
+        return {
+          kind: 'reply',
+          text: `📋 全部会话 (${opencodeSessions.length}，✓ = 已绑定):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定`,
+        }
+      }
+
+      // Default: show bound sessions only
+      const localSessions = stmt.list.all() as Array<{
+        feishu_key: string; session_id: string; last_active: number
+      }>
       if (localSessions.length === 0) {
-        // Show all opencode sessions even if no binding exists
-        if (opencodeSessions.length === 0) return { kind: 'reply', text: '📭 暂无活动会话\n使用 /new 创建新会话' }
+        if (opencodeSessions.length === 0) return { kind: 'reply', text: '📭 暂无会话\n使用 /new 创建新会话，或用 /list -all 查看全部' }
         const lines = opencodeSessions.slice(0, 10).map((s, i) => {
           const shortId = s.id.slice(0, 12) + '...'
           return `[${i + 1}] ${s.title || shortId}`
         })
-        return { kind: 'reply', text: `📋 可用会话 (${opencodeSessions.length}):\n${lines.join('\n')}\n\n用 /use <编号> 绑定` }
+        return { kind: 'reply', text: `📋 可用会话 (${opencodeSessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定` }
       }
 
       const lines = localSessions.map((s, i) => {
         const time = new Date(s.last_active).toLocaleTimeString('zh-CN')
-        const shortId = s.session_id.slice(0, 12) + '...'
-        const title = titleMap.get(s.session_id) || shortId
+        const title = titleMap.get(s.session_id) || s.session_id.slice(0, 12) + '...'
         return `[${i + 1}] ${title}  ${time}`
       })
       return {
         kind: 'reply',
-        text: `📋 活动会话 (${localSessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定`,
+        text: `📋 已绑定会话 (${localSessions.length}):\n${lines.join('\n')}\n\n用 /use <编号|标题> 绑定，/list -all 查看全部`,
       }
     }
 
@@ -191,7 +206,8 @@ export function createCommandHandler(): CommandHandler {
         kind: 'reply',
         text: `🐱 **opencode-copilot**\n
 \`/new\` — 创建新会话
-\`/list\` — 查看活跃会话（带编号）
+\`/list\` — 查看已绑定会话（带编号/标题）
+\`/list -all\` — 查看所有 opencode 会话
 \`/use <编号|ID|前缀|标题>\` — 绑定会话
 \`/thread <id> <msg>\` — 绑定并直接发消息
 \`/connect <id>\` — 直接绑定
