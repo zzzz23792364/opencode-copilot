@@ -87,17 +87,23 @@ export class StreamingOutboundHook {
     }, HEARTBEAT_MS)
   }
 
-  private doHeartbeat(session: StreamingSession): void {
-    const adapter = this.opts.adapters.get(session.connectorId)
-    if (!adapter?.editMessage || !session.platformMessageId) return
+  private async patchCard(session: StreamingSession, text: string): Promise<void> {
+    const adapter = this.opts.adapters.get(session.connectorId) as any
+    if (!adapter?.client?.im?.message?.patch || !session.platformMessageId) return
 
+    const card = { elements: [{ tag: 'markdown', content: text }] }
+    await adapter.client.im.message.patch({
+      path: { message_id: session.platformMessageId },
+      data: { content: JSON.stringify(card) },
+    })
+  }
+
+  private doHeartbeat(session: StreamingSession): void {
     const elapsed = Date.now() - session.lastUpdateAt
-    // Don't heartbeat if we just updated or text has started arriving
     if (elapsed < HEARTBEAT_MS - 500 || !session.firstChunk) return
 
     const content = `【${session.catDisplayName}🐱】⏳ 思考中...`
-    adapter.editMessage(session.externalChatId, session.platformMessageId, content)
-      .catch(() => { /* silent */ })
+    this.patchCard(session, content).catch(() => { /* silent */ })
   }
 
   async onStreamChunk(connectorId: string, externalChatId: string, accumulatedText: string): Promise<void> {
@@ -108,15 +114,11 @@ export class StreamingOutboundHook {
     const elapsed = now - session.lastUpdateAt
     const delta = accumulatedText.length - session.lastContentLength
 
-    // First chunk: fire immediately. Subsequent: respect throttle.
     if (!session.firstChunk && elapsed < this.updateIntervalMs && delta < this.minDeltaChars) return
 
     session.firstChunk = false
 
-    const adapter = this.opts.adapters.get(connectorId)
-    if (!adapter?.editMessage || !session.platformMessageId) return
-
-    adapter.editMessage(session.externalChatId, session.platformMessageId, `${accumulatedText} ▌`)
+    this.patchCard(session, `${accumulatedText} ▌`)
       .then(() => {
         this.opts.log.debug({ externalChatId, len: accumulatedText.length, elapsed, delta }, '[StreamingOutbound] PATCH ok')
       })
@@ -133,11 +135,8 @@ export class StreamingOutboundHook {
     if (session.heartbeatTimer) clearInterval(session.heartbeatTimer)
     this.sessions.delete(externalChatId)
 
-    const adapter = this.opts.adapters.get(connectorId)
-    if (!session.platformMessageId) return
-
     try {
-      await adapter?.editMessage?.(session.externalChatId, session.platformMessageId, finalText)
+      await this.patchCard(session, finalText)
     } catch (err) {
       this.opts.log.warn({ err: String(err) }, '[StreamingOutbound] onStreamEnd editMessage failed')
     }
