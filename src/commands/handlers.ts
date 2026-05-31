@@ -111,9 +111,9 @@ export function createCommandHandler(): CommandHandler {
     if (trimmed === '/list' || trimmed === '/sessions' || trimmed === '/list -all' || trimmed === '/list --all') {
       const allMode = trimmed.includes('-all')
       const defaultCwd = process.cwd()
+      const bound = sessionManager.getSession(chatId)
 
       if (allMode) {
-        // Show ALL sessions across all projects
         const projects = listProjects()
         if (projects.length === 0) return { kind: 'reply', text: '📭 暂无会话' }
         const lines: string[] = []
@@ -124,10 +124,11 @@ export function createCommandHandler(): CommandHandler {
           const sessions = listSessions(p.directory, 5)
           for (const s of sessions) {
             idx++
-            lines.push(`  [${idx}] ${s.title || s.id.slice(0, 12) + '...'}`)
+            const mark = bound?.session_id === s.id ? ' ✓' : ''
+            lines.push(`  [${idx}] ${s.title || s.id.slice(0, 12) + '...'}${mark}`)
           }
         }
-        return { kind: 'reply', text: `📋 全部会话:\n${lines.join('\n')}\n\n用 /project <编号> 选择项目` }
+        return { kind: 'reply', text: `📋 全部会话 (✓ = 当前):\n${lines.join('\n')}\n\n用 /project <编号> 选择项目` }
       }
 
       // Default: selected project
@@ -138,7 +139,8 @@ export function createCommandHandler(): CommandHandler {
         return { kind: 'reply', text: `📭 ${dirName} 暂无会话\n用 /projects 查看其他项目` }
       }
       const lines = sessions.map((s, i) => {
-        return `[${i + 1}] ${s.title || s.id.slice(0, 12) + '...'}`
+        const mark = bound?.session_id === s.id ? ' ✓' : ''
+        return `[${i + 1}] ${s.title || s.id.slice(0, 12) + '...'}${mark}`
       })
       return {
         kind: 'reply',

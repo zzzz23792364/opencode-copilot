@@ -33,7 +33,7 @@ export function listSessions(directory: string, limit = 20): OpenSession[] {
   const db = openReadonly()
   try {
     const rows = db.query(
-      'SELECT id, title, directory FROM session WHERE directory = ? ORDER BY time_updated DESC LIMIT ?'
+      'SELECT id, title, directory FROM session WHERE directory = ? AND (title IS NULL OR title NOT LIKE \'%@explore%\' AND title NOT LIKE \'%@general%\' AND title NOT LIKE \'%@task%\') ORDER BY time_updated DESC LIMIT ?'
     ).all(directory, limit) as OpenSession[]
     return rows
   } finally {
