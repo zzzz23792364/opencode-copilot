@@ -116,6 +116,7 @@ async function main() {
       }
 
       // Check commands
+      console.error('BEFORE_HANDLE', parsed.text)
       const cmdResult = await commandHandler.handle(
         parsed.text,
         parsed.chatId,
@@ -126,13 +127,20 @@ async function main() {
       if (cmdResult) {
         if (cmdResult.kind === 'thread') {
           const session = sessionManager.getSession(parsed.chatId)
-          const result = await opencodeRun(cmdResult.message, cmdResult.sessionId, session?.opencode_cwd || undefined)
+          const result = await opencodeRun({
+            prompt: cmdResult.message,
+            sessionId: cmdResult.sessionId,
+            cwd: session?.opencode_cwd || undefined,
+            flags: session?.flags ? { danger: JSON.parse(session.flags).danger } : undefined,
+            model: session?.model || undefined,
+            cliArgs: session?.cli_args ? JSON.parse(session.cli_args) : undefined,
+          })
           await outbound.sendFormatted(parsed.chatId, result.text)
         } else if (cmdResult.kind === 'card') {
           const ctx = cmdResult.context
           if (ctx.actionType === 'cf_config') {
-            const currentFlags = sessionManager.getSession(parsed.chatId)?.flags
-            const card = buildConfigCard(parsed.chatId, currentFlags || null)
+            const session = sessionManager.getSession(parsed.chatId)
+            const card = buildConfigCard(parsed.chatId, session || null)
             await sendCard(adapter, parsed.chatId, card, ctx).catch(() => {})
           } else if (ctx.actionType === 'list_projects' || ctx.actionType === 'sw_projects') {
             const card = buildProjectListCard(parsed.chatId, ctx.projectList || [], ctx.currentCwd || null)

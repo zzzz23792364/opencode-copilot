@@ -1,4 +1,5 @@
 import type { Database } from 'better-sqlite3'
+import { execSync } from 'node:child_process'
 import { getSessionStmt } from '../utils/db.js'
 import { listSessions, listProjects } from '../utils/opencode-db.js'
 import { createLogger } from '../utils/logger.js'
@@ -140,9 +141,10 @@ export async function handleCardAction(
       if (!sessionId) return
 
       const stmt = getSessionStmt(db)
-      const row = stmt.get.get(action.chatId) as { opencode_cwd: string | null } | null
+      const row = stmt.get.get(action.chatId) as { opencode_cwd: string | null; cli_args: string | null } | null
       const cwd = row?.opencode_cwd ?? null
-      stmt.upsert.run(action.chatId, sessionId, 'default', null, cwd, Date.now(), Date.now())
+      const cliArgs = row?.cli_args ?? null
+      stmt.upsert.run(action.chatId, sessionId, 'default', null, cwd, null, cliArgs, Date.now(), Date.now())
 
       log.info({ chatId: action.chatId, sessionId }, 'Card: session bound')
 
@@ -173,8 +175,23 @@ export async function handleCardAction(
       break
     }
 
-    case 'cf_toggle': {
-      await handleToggleFlag(action, adapter, db)
+    case 'cli_arg_toggle': {
+      await handleCliArgToggle(action, adapter, db)
+      break
+    }
+
+    case 'select_model': {
+      await handleModelSelect(action, adapter, db)
+      break
+    }
+
+    case 'select_model_provider': {
+      await handleProviderSelect(action, adapter, db)
+      break
+    }
+
+    case 'select_model_set': {
+      await handleModelSet(action, adapter, db)
       break
     }
 
@@ -240,7 +257,7 @@ async function handleProjectSelect(
   if (existing) {
     db.prepare('UPDATE feishu_sessions SET opencode_cwd = ?, last_active = ? WHERE feishu_key = ?').run(directory, Date.now(), action.chatId)
   } else {
-    stmt.upsert.run(action.chatId, 'placeholder', 'default', null, directory, Date.now(), Date.now())
+    stmt.upsert.run(action.chatId, 'placeholder', 'default', null, directory, null, null, Date.now(), Date.now())
   }
 
   log.info({ chatId: action.chatId, directory, isSwitchFlow }, 'Card: project selected')
@@ -274,11 +291,12 @@ async function handleProjectSelect(
 /**
  * Build /cf interactive card with toggle buttons for opencode run flags.
  */
-export function buildConfigCard(chatId: string, currentFlagsJson: string | null): object {
-  let flags: Record<string, boolean> = {}
-  try { if (currentFlagsJson) flags = JSON.parse(currentFlagsJson) } catch {}
-
-  const dangerOn = !!flags.danger
+export function buildConfigCard(chatId: string, session: { flags: string | null; cli_args: string | null; model: string | null } | null): object {
+  const cliArgs: string[] = []
+  if (session?.cli_args) { try { cliArgs.push(...JSON.parse(session.cli_args)) } catch {} }
+  const dangerOn = cliArgs.includes('--dangerously-skip-permissions')
+  const thinkingOn = cliArgs.includes('--thinking')
+  const currentModel = session?.model || '未设置'
 
   return {
     config: { update_multi: true },
@@ -289,47 +307,205 @@ export function buildConfigCard(chatId: string, currentFlagsJson: string | null)
     elements: [
       {
         tag: 'markdown' as const,
-        content: `**--danger** 允许危险操作（跳过权限确认）\n当前: ${dangerOn ? '✅ 开启' : '❌ 关闭'}`,
+        content: `**模型**: ${currentModel}\n**--dangerously-skip-permissions**: ${dangerOn ? '✅' : '❌'}\n**--thinking**: ${thinkingOn ? '✅' : '❌'}`,
       },
       {
         tag: 'action' as const,
-        actions: [{
-          tag: 'button' as const,
-          text: { tag: 'plain_text' as const, content: dangerOn ? '关闭 --danger' : '开启 --danger' },
-          type: dangerOn ? 'default' as const : 'primary' as const,
-          value: { action: 'cf_toggle', flag: 'danger', chat_id: chatId },
-        }],
+        actions: [
+          {
+            tag: 'button' as const,
+            text: { tag: 'plain_text' as const, content: '选择模型' },
+            type: 'default' as const,
+            value: { action: 'select_model', chat_id: chatId },
+          },
+          {
+            tag: 'button' as const,
+            text: { tag: 'plain_text' as const, content: dangerOn ? '关闭 --dangerously-skip-permissions' : '开启 --dangerously-skip-permissions' },
+            type: dangerOn ? 'default' as const : 'primary' as const,
+            value: { action: 'cli_arg_toggle', arg: '--dangerously-skip-permissions', chat_id: chatId },
+          },
+          {
+            tag: 'button' as const,
+            text: { tag: 'plain_text' as const, content: thinkingOn ? '关闭 --thinking' : '开启 --thinking' },
+            type: thinkingOn ? 'default' as const : 'primary' as const,
+            value: { action: 'cli_arg_toggle', arg: '--thinking', chat_id: chatId },
+          },
+        ],
       },
     ],
   }
 }
 
-/** Handle cf_toggle card action — flip a flag and repatch the card. */
-async function handleToggleFlag(
+/** Toggle a CLI arg in/out of the cli_args JSON array. */
+async function handleCliArgToggle(
   action: FeishuCardAction & { open_message_id?: string },
   adapter: FeishuAdapter,
   db: Database,
 ): Promise<void> {
-  const flag = action.actionValue.flag as string
+  const arg = action.actionValue.arg as string
   const openMessageId = (action as any).open_message_id as string | undefined
-  if (!flag) return
+  if (!arg) return
 
-  const stmt = getSessionStmt(db)
-  const row = stmt.get.get(action.chatId) as { flags: string | null } | undefined
-  const current: Record<string, boolean> = row?.flags ? JSON.parse(row.flags) : {}
+  const row = (getSessionStmt(db).get.get(action.chatId) as { cli_args: string | null } | undefined)
+  const current: string[] = row?.cli_args ? JSON.parse(row.cli_args) : []
 
-  current[flag] = !current[flag]
+  const idx = current.indexOf(arg)
+  if (idx >= 0) current.splice(idx, 1)
+  else current.push(arg)
 
-  const newFlags = JSON.stringify(current)
-  db.prepare('UPDATE feishu_sessions SET flags = ?, last_active = ? WHERE feishu_key = ?').run(newFlags, Date.now(), action.chatId)
+  db.prepare('UPDATE feishu_sessions SET cli_args = ?, last_active = ? WHERE feishu_key = ?')
+    .run(JSON.stringify(current), Date.now(), action.chatId)
 
-  log.info({ chatId: action.chatId, flag, value: current[flag] }, 'Card: flag toggled')
+  log.info({ chatId: action.chatId, arg, enabled: idx < 0 }, 'Card: cli_arg toggled')
 
   if (openMessageId) {
     try {
-      await patchCard(adapter, openMessageId, buildConfigCard(action.chatId, newFlags) as any)
+      const sessionRow = getSessionStmt(db).get.get(action.chatId) as { flags: string | null; cli_args: string | null; model: string | null } | null
+      await patchCard(adapter, openMessageId, buildConfigCard(action.chatId, sessionRow) as any)
     } catch (err) {
-      log.warn({ err: String(err) }, 'Failed to patch config card')
+      log.warn({ err: String(err) }, 'Failed to patch config card after cli_arg_toggle')
+    }
+  }
+}
+
+/** Build provider selection card (first step of model selection flow). */
+function buildProviderListCard(chatId: string, providers: Array<{ name: string; count: number }>): object {
+  const elements: object[] = [{ tag: 'markdown', content: '选择 provider 查看可用模型：' }]
+  const buttons = providers.map(p => ({
+    tag: 'button' as const,
+    text: { tag: 'plain_text' as const, content: `${p.name} (${p.count})` },
+    type: 'default' as const,
+    value: { action: 'select_model_provider', provider: p.name, chat_id: chatId },
+  }))
+  for (let i = 0; i < buttons.length; i += 5) {
+    elements.push({ tag: 'action' as const, actions: buttons.slice(i, i + 5) })
+  }
+  return {
+    config: { update_multi: true },
+    header: { title: { tag: 'plain_text' as const, content: '🤖 选择 Provider' }, template: 'blue' as const },
+    elements,
+  }
+}
+
+/** Build model list card for a given provider (second step). */
+function buildModelListCard(chatId: string, provider: string, models: string[]): object {
+  return {
+    config: { update_multi: true },
+    header: { title: { tag: 'plain_text' as const, content: `🤖 ${provider}` }, template: 'blue' as const },
+    elements: [
+      { tag: 'markdown', content: `选择 ${provider} 下的模型：` },
+      ...models.map(m => ({
+        tag: 'action' as const,
+        actions: [{
+          tag: 'button' as const,
+          text: { tag: 'plain_text' as const, content: m },
+          type: 'default' as const,
+          value: { action: 'select_model_set', model: m, chat_id: chatId },
+        }],
+      })),
+    ],
+  }
+}
+
+/** Handle select_model card action — run `opencode models` and show provider list. */
+async function handleModelSelect(
+  action: FeishuCardAction & { open_message_id?: string },
+  adapter: FeishuAdapter,
+  db: Database,
+): Promise<void> {
+  const chatId = action.actionValue.chat_id as string || action.chatId
+  const openMessageId = (action as any).open_message_id as string | undefined
+
+  // Fetch models from opencode CLI
+  let models: string[] = []
+  try {
+    const out = execSync('opencode models', { encoding: 'utf-8', timeout: 15000 }).trim()
+    models = out.split('\n').filter(Boolean)
+  } catch {
+    log.warn({}, 'Failed to query opencode models')
+    if (openMessageId) {
+      await patchCard(adapter, openMessageId, {
+        header: { title: { tag: 'plain_text', content: '❌ 查询失败' }, template: 'red' },
+        elements: [{ tag: 'markdown', content: '无法获取模型列表，opencode CLI 是否可用？' }],
+      })
+    }
+    return
+  }
+
+  // Group by provider (prefix before /)
+  const groups = new Map<string, string[]>()
+  for (const m of models) {
+    const sep = m.indexOf('/')
+    const provider = sep > 0 ? m.slice(0, sep) : '__other'
+    if (!groups.has(provider)) groups.set(provider, [])
+    groups.get(provider)!.push(m)
+  }
+
+  const providers = [...groups.entries()]
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .map(([name, ms]) => ({ name, count: ms.length }))
+
+  const card = buildProviderListCard(chatId, providers)
+  if (openMessageId) {
+    await patchCard(adapter, openMessageId, card as any)
+  } else {
+    await sendCard(adapter, chatId, card, { actionType: 'select_model_provider' })
+  }
+}
+
+/** Handle provider selection — show models for that provider. */
+async function handleProviderSelect(
+  action: FeishuCardAction & { open_message_id?: string },
+  adapter: FeishuAdapter,
+  db: Database,
+): Promise<void> {
+  const chatId = action.actionValue.chat_id as string || action.chatId
+  const provider = action.actionValue.provider as string
+  const openMessageId = (action as any).open_message_id as string | undefined
+  if (!provider) return
+
+  let models: string[] = []
+  try {
+    const out = execSync('opencode models', { encoding: 'utf-8', timeout: 15000 }).trim()
+    models = out.split('\n').filter(Boolean)
+  } catch {
+    log.warn({}, 'Failed to query opencode models')
+    return
+  }
+
+  const prefix = provider + '/'
+  const filtered = models.filter(m => m.startsWith(prefix))
+  const card = buildModelListCard(chatId, provider, filtered)
+
+  if (openMessageId) {
+    await patchCard(adapter, openMessageId, card as any)
+  } else {
+    await sendCard(adapter, chatId, card, { actionType: 'select_model_set' })
+  }
+}
+
+/** Handle model selection — save to DB and show config card. */
+async function handleModelSet(
+  action: FeishuCardAction & { open_message_id?: string },
+  adapter: FeishuAdapter,
+  db: Database,
+): Promise<void> {
+  const chatId = action.actionValue.chat_id as string || action.chatId
+  const model = action.actionValue.model as string
+  const openMessageId = (action as any).open_message_id as string | undefined
+  if (!model) return
+
+  db.prepare('UPDATE feishu_sessions SET model = ?, last_active = ? WHERE feishu_key = ?')
+    .run(model, Date.now(), action.chatId)
+
+  log.info({ chatId, model }, 'Card: model selected')
+
+  if (openMessageId) {
+    try {
+      const sessionRow = getSessionStmt(db).get.get(action.chatId) as { flags: string | null; cli_args: string | null; model: string | null } | null
+      await patchCard(adapter, openMessageId, buildConfigCard(action.chatId, sessionRow) as any)
+    } catch (err) {
+      log.warn({ err: String(err) }, 'Failed to patch config card after model select')
     }
   }
 }

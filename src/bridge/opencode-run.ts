@@ -15,6 +15,8 @@ export interface OpenCodeRunOptions {
   sessionId?: string
   cwd?: string
   flags?: RunFlags
+  model?: string
+  cliArgs?: string[]
   onText?: (text: string) => void | Promise<void>
   onToolUse?: (toolName: string, state: 'running' | 'done' | 'error') => void
   onStart?: (abort: () => void) => void
@@ -35,11 +37,17 @@ export function opencodeRun(
 
   return new Promise((resolve, reject) => {
     const args = ['run', '--format', 'json']
-    if (opts.flags?.danger) args.push('--danger')
+    if (opts.model) args.push('-m', opts.model)
     if (opts.sessionId) args.push('--session', opts.sessionId)
+    // New code path: cliArgs takes precedence over legacy flags.danger
+    if (opts.cliArgs && opts.cliArgs.length > 0) {
+      args.push(...opts.cliArgs)
+    } else if (opts.flags?.danger) {
+      args.push('--dangerously-skip-permissions')
+    }
     args.push(opts.prompt)
 
-    log.info({ sessionId: opts.sessionId, cwd: opts.cwd, prompt: opts.prompt.slice(0, 50) }, 'spawning opencode')
+    log.info({ sessionId: opts.sessionId, cwd: opts.cwd, args, prompt: opts.prompt.slice(0, 50) }, 'spawning opencode')
 
     const proc = spawn('opencode', args, {
       stdio: ['pipe', 'pipe', 'pipe'],

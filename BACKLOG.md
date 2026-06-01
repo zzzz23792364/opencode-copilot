@@ -19,9 +19,9 @@ updated: 2026-06-01
 
 | 维度 | 活跃 / Pending | 近期 Done |
 |------|---------------|-----------|
-| Features | **0** in_progress，**1** pending | 桥接核心 ✅ 命令系统 ✅ 流式卡片 ✅ 生命周期管理 ✅ 项目切换 ✅ 文档体系 ✅ 交互卡片 ✅ /sw ✅ Node.js迁移 ✅ |
-| Bugs | **0** active | B001-B006 全部 ✅ |
-| Docs | **0** pending | SPEC ✅ README ✅ SOP ✅ CHANGELOG ✅ decisions ✅ |
+| Features | **0** in_progress，**1** pending | 桥接核心 ✅ 命令系统 ✅ 流式卡片 ✅ 生命周期管理 ✅ 项目切换 ✅ 文档体系 ✅ 交互卡片 ✅ /sw ✅ Node.js迁移 ✅ /cf 模型选择 ✅ cli_args ✅ --thinking toggle ✅ |
+| Bugs | **0** active | B001-B007 全部 ✅ |
+| Docs | **0** pending | SPEC ✅ README ✅ SOP ✅ CHANGELOG ✅ decisions ✅ B007 ✅ |
 
 ---
 

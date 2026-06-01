@@ -15,11 +15,11 @@ export type CommandResult =
 
 export interface CardContext {
   actionType: string
-  chatId?: string
   sessionList?: Array<{ id: string; title: string | null }>
   projectList?: Array<{ directory: string; count: number }>
   projectName?: string
   currentCwd?: string | null
+  chatId?: string
 }
 
 export interface CommandHandler {
@@ -79,6 +79,7 @@ export function createCommandHandler(): CommandHandler {
     db: Database,
   ): Promise<CommandResult> {
     const trimmed = text.trim()
+    console.error('INSIDE_HANDLE', trimmed, trimmed === '/cf')
 
     // /new
     if (trimmed === '/new' || trimmed.startsWith('/new ')) {
@@ -257,7 +258,7 @@ export function createCommandHandler(): CommandHandler {
         text: `**opencode-copilot**\n
 \`/new\` — 创建新会话
 \`/sw\` — 快速切换项目和会话（两步卡片）
-\`/cf\` — 配置 opencode run 参数（--danger 等）
+\`/cf\` — 配置 opencode run 参数（模型、--dangerously-skip-permissions 等）
 \`/projects\` — 查看所有项目目录
 \`/project <编号>\` — 选择项目目录
 \`/list\` — 查看当前项目的会话

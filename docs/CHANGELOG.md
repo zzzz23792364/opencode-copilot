@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.2.1] - 2026-06-01
+
+### Added
+
+- **`/cf` 模型选择**: 调用 `opencode models` → provider 分组卡片 → 模型列表卡片 → 写入 `feishu_sessions.model` 列 → `opencode run -m MODEL`
+- **`cli_args` 自定义参数**: 通用 JSON 数组列，替代硬编码 `--danger` flag；当前支持 `--dangerously-skip-permissions` 和 `--thinking`
+- **`--thinking` toggle**: `/cf` 卡片第三按钮，复用 `cli_arg_toggle` 机制
+
+### Changed
+
+- **`/cf` 卡片全面升级**: 从单 flag toggle → 模型选择 + 多 CLI 参数开关
+- **`--danger` → `--dangerously-skip-permissions`**: 对齐 `opencode run --help` 真实参数名
+- **`manage.ts` 完整重写**: 修复多次编辑导致的损坏，`findBridgeNodePids()` 正则匹配 `preflight` 进程，`verifySingleInstance()` 轮询保唯一
+
+### Fixed
+
+- **B007**: `npm run dev`(`tsx watch`) 导致每次 `src/` 变更触发 bridge 重启 + WS 风暴 — 根因文档 + AGENTS 硬约束
+
+### Docs
+
+- 新增 `docs/bugs/B007-tsx-watch-auto-restart.md`
+
+---
+
 ## [0.2.0] - 2026-05-31
 
 ### Changed

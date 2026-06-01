@@ -10,6 +10,7 @@ export interface SessionRow {
   model: string | null
   opencode_cwd: string | null
   flags: string | null
+  cli_args: string | null
   created_at: number
   last_active: number
 }
@@ -32,6 +33,7 @@ export function createDatabase(dbPath: string) {
   // Migration
   try { db.exec('ALTER TABLE feishu_sessions ADD COLUMN opencode_cwd TEXT') } catch {}
   try { db.exec('ALTER TABLE feishu_sessions ADD COLUMN flags TEXT') } catch {}
+  try { db.exec('ALTER TABLE feishu_sessions ADD COLUMN cli_args TEXT') } catch {}
 
   db.exec(`CREATE TABLE IF NOT EXISTS dedup (
     message_id TEXT PRIMARY KEY,
@@ -54,8 +56,8 @@ export function getSessionStmt(db: any) {
   return {
     get: db.prepare('SELECT * FROM feishu_sessions WHERE feishu_key = ?'),
     upsert: db.prepare(
-      `INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, created_at, last_active)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`
+      `INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, flags, cli_args, created_at, last_active)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     ),
     touch: db.prepare(
       'UPDATE feishu_sessions SET last_active = ? WHERE feishu_key = ?'

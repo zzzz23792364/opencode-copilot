@@ -10,7 +10,7 @@ export interface RunFlags {
 }
 
 export interface SessionManager {
-  getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null; flags: RunFlags }>
+  getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null; flags: RunFlags; model: string | null; cliArgs: string[] }>
   getSession(feishuKey: string): SessionRow | null
   touch(feishuKey: string): void
 }
@@ -18,6 +18,11 @@ export interface SessionManager {
 function parseFlags(raw: string | null): RunFlags {
   if (!raw) return {}
   try { return JSON.parse(raw) } catch { return {} }
+}
+
+function parseCliArgs(raw: string | null): string[] {
+  if (!raw) return []
+  try { return JSON.parse(raw) } catch { return [] }
 }
 
 export function createSessionManager(db: Database): SessionManager {
@@ -31,13 +36,13 @@ export function createSessionManager(db: Database): SessionManager {
     stmt.touch.run(Date.now(), feishuKey)
   }
 
-  async function getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null; flags: RunFlags }> {
+  async function getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null; flags: RunFlags; model: string | null; cliArgs: string[] }> {
     const existing = getSession(feishuKey)
     if (existing && existing.session_id !== 'placeholder') {
       stmt.touch.run(Date.now(), feishuKey)
       const resolvedCwd = existing.opencode_cwd || cwd || null
       log.info({ feishuKey, sessionId: existing.session_id, cwd: resolvedCwd }, 'Reusing existing session')
-      return { sessionId: existing.session_id, cwd: resolvedCwd, flags: parseFlags(existing.flags) }
+      return { sessionId: existing.session_id, cwd: resolvedCwd, flags: parseFlags(existing.flags), model: existing.model, cliArgs: parseCliArgs(existing.cli_args) }
     }
 
     const spawnCwd = cwd || undefined
@@ -60,11 +65,11 @@ export function createSessionManager(db: Database): SessionManager {
 
     const upsertCwd = cwd || null
     db.prepare(
-      'INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, flags, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
-    ).run(feishuKey, sessionId, 'default', null, upsertCwd, null, Date.now(), Date.now())
+      'INSERT OR REPLACE INTO feishu_sessions (feishu_key, session_id, agent, model, opencode_cwd, flags, cli_args, created_at, last_active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+    ).run(feishuKey, sessionId, 'default', null, upsertCwd, null, null, Date.now(), Date.now())
 
     log.info({ feishuKey, sessionId, cwd }, 'Session mapping created from discovery')
-    return { sessionId, cwd: upsertCwd, flags: {} }
+    return { sessionId, cwd: upsertCwd, flags: {}, model: null, cliArgs: [] }
   }
 
   return { getOrCreate, getSession, touch }

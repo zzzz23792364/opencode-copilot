@@ -40,7 +40,7 @@ export function createMessageHandler(
       }
     }
 
-    const { sessionId, cwd, flags } = await sessionManager.getOrCreate(chatId)
+    const { sessionId, cwd, flags, model, cliArgs } = await sessionManager.getOrCreate(chatId)
 
     log.info({ chatId, sessionId }, 'Running opencode (streaming)')
 
@@ -53,6 +53,8 @@ export function createMessageHandler(
       sessionId,
       cwd: cwd || undefined,
       flags,
+      model: model || undefined,
+      cliArgs,
       onText: (chunk) => { streaming.onChunk(chunk).catch(() => {}) },
       onToolUse: (toolName) => { streaming.onToolUse(toolName, 'running').catch(() => {}) },
       onStart: (abort) => {
