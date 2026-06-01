@@ -102,6 +102,15 @@ export function opencodeRun(
             })
           }
         }
+        if (ev.type === 'reasoning' && ev.part?.text) {
+          fullText += ev.part.text + '\n\n---\n\n'
+          if (opts.onText) {
+            const chunk = ev.part.text + '\n\n---\n\n'
+            lastOnText = lastOnText.then(() => {
+              try { return opts.onText!(chunk) } catch {}
+            })
+          }
+        }
         if (ev.type === 'tool_use' && opts.onToolUse && ev.part) {
           const toolName = ev.part.name || ev.part.type || 'tool'
           opts.onToolUse(toolName, 'running')
@@ -133,6 +142,9 @@ export function opencodeRun(
             }
             if (ev.type === 'text' && ev.part?.text) {
               fullText += ev.part.text
+            }
+            if (ev.type === 'reasoning' && ev.part?.text) {
+              fullText += ev.part.text + '\n\n---\n\n'
             }
           } catch { /* skip */ }
         }
