@@ -7,6 +7,7 @@
 - **`/cf` 模型选择**: 调用 `opencode models` → provider 分组卡片 → 模型列表卡片 → 写入 `feishu_sessions.model` 列 → `opencode run -m MODEL`
 - **`cli_args` 自定义参数**: 通用 JSON 数组列，替代硬编码 `--danger` flag；当前支持 `--dangerously-skip-permissions` 和 `--thinking`
 - **`--thinking` toggle**: `/cf` 卡片第三按钮，复用 `cli_arg_toggle` 机制
+- **`reasoning` 事件管道**: `type:"reasoning"` NDJSON 通过 `onText` 推入流式管线，`---` 分隔显示
 
 ### Changed
 
@@ -21,6 +22,7 @@
 ### Docs
 
 - 新增 `docs/bugs/B007-tsx-watch-auto-restart.md`
+- 新增 `docs/decisions/D003-format-json-streaming-behavior.md` — 流式调研决策
 
 ---
 
