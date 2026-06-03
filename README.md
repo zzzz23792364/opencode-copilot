@@ -1,5 +1,7 @@
 # opencode-copilot: 飞书 ↔ opencode TUI 双向桥
 
+手机聊着天就把代码写了。飞书就是你的 AI 编程入口，和电脑端 TUI 共享同一会话，走到哪编到哪。
+
 在飞书聊天框里直接使用 opencode 终端 AI 助手，与 TUI 共享同一会话、同一历史。
 
 ```
