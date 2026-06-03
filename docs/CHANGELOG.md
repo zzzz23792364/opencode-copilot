@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.3.0] - 2026-06-01
+## [0.3.0] - 2026-06-03
 
 ### Added
 
@@ -15,6 +15,7 @@
 ### Docs
 
 - 新增 `docs/decisions/D003-format-json-streaming-behavior.md` — 流式调研决策
+- **README 重写**: 标题含飞书/Feishu 关键字、竞品对比表格、面向人群定位、修正 Quick Start（npm install 优先）、补充 `/cf`/推理过程/Production 章节
 
 ---
 

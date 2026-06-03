@@ -1,55 +1,76 @@
-# opencode-copilot
+# opencode-copilot: 飞书 ↔ opencode TUI 双向桥
 
-飞书与 opencode TUI 共享同一个 AI 会话的双向桥。
+在飞书聊天框里直接使用 opencode 终端 AI 助手，与 TUI 共享同一会话、同一历史。
 
 ```
 你在飞书发消息 → opencode 处理 → 回复同时出现在 TUI 和飞书
-你在 TUI 发消息 → 自动转发到飞书（通知你）
+你在 TUI 发消息 → 历史即时同步（双向可见）
 ```
+
+不需要运行 `opencode serve`，不依赖插件 SDK，直接通过 `opencode run --format json` 与 TUI 共享 SQLite 数据库。
 
 ## Quick Start
 
 ```bash
-# 1. 安装
+# 推荐：全局安装
 npm install -g opencode-copilot
 
-# 2. 配置（在运行目录创建 .env）
-cat > .env << 'EOF'
-FEISHU_APP_ID=cli_xxxxxxxx
-FEISHU_APP_SECRET=xxxxxxxxxxxx
-EOF
+# 或者：git clone 部署
+git clone https://github.com/zzzz23792364/opencode-copilot.git
+cd opencode-copilot
+npm install
 
-# 3. 启动
-opencode-copilot start
+# 2. 配置飞书应用凭据
+cp .env.example .env
+# 填入 FEISHU_APP_ID 和 FEISHU_APP_SECRET
+
+# 3. 启动（生产模式，后台运行）
+npm start
 
 # 4. 在飞书给 bot 发消息即可
 ```
 
-## Slash Commands
+## Features
 
-在飞书对话中发送以下命令：
+### 斜杠命令
 
 | 命令 | 说明 |
 |------|------|
 | `/new` | 创建新会话 |
-| `/sw` | 快速切换项目和会话（两步卡片流） |
-| `/projects` / `/project <编号>` | 查看/选择项目目录 |
-| `/list` | 查看活跃会话（带编号和标题） |
-| `/use <编号\|ID\|前缀\|标题>` | 绑定会话 |
-| `/thread <编号\|ID> <消息>` | 绑定并直接发消息 |
-| `/connect <session_id>` | 直接绑定指定 session |
-| `/unbind` | 取消绑定当前对话 |
-| `/where` / `/status` | 查看当前绑定信息 |
-| `/commands` / `/help` | 显示命令列表 |
+| `/sw` | 交互卡片选择项目 + 会话 |
+| `/cf` | 交互式配置（模型 / CLI 参数） |
+| `/list` | 查看活跃会话 |
+| `/help` | 显示帮助 |
 
-## Environment Variables
+### 交互式配置（`/cf`）
 
-| 变量 | 必须 | 说明 |
-|------|:---:|------|
-| `FEISHU_APP_ID` | ✅ | 飞书应用 App ID |
-| `FEISHU_APP_SECRET` | ✅ | 飞书应用 App Secret |
-| `FEISHU_BOT_OPEN_ID` | — | Bot 的 Open ID（群聊 @提及检测用） |
-| `LOG_LEVEL` | — | 日志级别（默认 `info`） |
+`/cf` 命令发送一张配置卡片，支持：
+
+- **模型选择** — `opencode models` 查询可用模型，按 provider 分组，卡片流式选择
+- **`--dangerously-skip-permissions`** — 切换按钮，跳过权限确认
+- **`--thinking`** — 切换按钮，启用推理过程显示
+
+配置会持久化到该飞书会话，后续 `opencode run` 自动带上对应参数。
+
+### 推理过程（reasoning）
+
+当模型处于 `--thinking` 模式时，推理过程通过 `reasoning` NDJSON 事件捕获，以 `---` 分隔线附加在回复末尾，不影响主回复流。
+
+## 为什么是 opencode-copilot，而非其他方案？
+
+| 维度 | opencode-copilot | NeverMore93/opencode-feishu | @neomei/opencode-feishu |
+|------|-----------------|----------------------------|------------------------|
+| **运行模式** | 独立桥接服务 | opencode 插件（进程内） | 独立 CLI + 插件 |
+| **依赖 serve** | ❌ 不需要 | ✅ 需要 | ✅ 需要 |
+| **会话共享 TUI** | ✅ 同一 SQLite DB | ❌ 不共享 | ❌ 不共享 |
+| **连接方式** | `opencode run` 子进程 | `@opencode-ai/plugin` 钩子 | `@opencode-ai/sdk` SSE |
+| **流式粒度** | 每次回复整块发送 | 轮询检测完成 | SSE 逐 token |
+| **启动开销** | ~400ms/次 | 0（进程内） | ~0（SSE 长连） |
+
+**opencode-copilot 的核心差异化优势**：
+- **不依赖 `opencode serve`** — 只要 CLI 装好就能跑，不受 serve 模式稳定性影响
+- **与 TUI 共享 session** — 飞书发的消息在 TUI `ls` 可见，TUI 的回复飞书也能查
+- **架构极简** — 单进程 + SQLite，0 额外依赖
 
 ## Architecture
 
@@ -82,7 +103,7 @@ opencode-copilot start
 └─────────────────────┘
 ```
 
-**核心原理**：直接用 `opencode run --session <id> --format json` 写入 opencode 的 SQLite 数据库，TUI 读取同一个 DB，实现双向共享。
+**核心原理**：通过 `opencode run --session <id> --format json` 写入 opencode 的 SQLite 数据库，TUI 读取同一个 DB，实现双向共享。不需要 `opencode serve` 后台进程。
 
 ## Session Mapping
 
@@ -92,22 +113,33 @@ opencode-copilot start
 feishu_key (chat_id) → session_id (ses_xxx)
 ```
 
-重启不丢失，用 `/list` `/use` 管理绑定。
+重启不丢失，用 `/list` 管理绑定。
+
+## Environment Variables
+
+| 变量 | 必须 | 说明 |
+|------|:---:|------|
+| `FEISHU_APP_ID` | ✅ | 飞书应用 App ID |
+| `FEISHU_APP_SECRET` | ✅ | 飞书应用 App Secret |
+| `LOG_LEVEL` | — | 日志级别（默认 `info`） |
 
 ## Prerequisites
 
-- **Node.js** >= 18（通过 nvm 或系统包管理器）
-- **opencode** CLI（共享 session）
-- **飞书应用**（需开通 `im:message` 权限，事件订阅长连接模式）
+- **Node.js** >= 18
+- **opencode** CLI（须在 PATH 中，版本 >= 1.15.13）
+- **飞书应用**（需开通 `im:message` 权限，事件订阅使用长连接模式）
 
-## Development
+## Production
 
-```bash
-git clone https://github.com/zzzz23792364/opencode-copilot.git
-cd opencode-copilot
-npm install
-cp .env.example .env  # 填入你的 App ID/Secret
-npm run dev            # 前台运行（watch 模式）
-```
+| 命令 | 说明 |
+|------|------|
+| `npm start` | 后台启动（推荐生产用） |
+| `npm run dev` | 前台运行 + watch 模式（仅开发调试） |
+| `npm stop` | 停止后台进程 |
+| `npm restart` | 重启 |
 
-详细设计文档见 [docs/specs/tech-architecture.md](docs/specs/tech-architecture.md)，文档索引见 [docs/README.md](docs/README.md)。
+**生产必须用 `npm start`**，不要用 `npm run dev`（`tsx watch` 会因 src 文件写盘触发反复重启）。
+
+## License
+
+MIT
