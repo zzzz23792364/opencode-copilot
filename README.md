@@ -12,23 +12,21 @@
 ## Quick Start
 
 ```bash
-# 推荐：全局安装
+# 1. 安装
 npm install -g @woxiaoniu/opencode-copilot
 
-# 或者：git clone 部署
-git clone https://github.com/zzzz23792364/opencode-copilot.git
-cd opencode-copilot
-npm install
-
 # 2. 配置飞书应用凭据
-cp .env.example .env
-# 填入 FEISHU_APP_ID 和 FEISHU_APP_SECRET
+# 在运行目录创建 .env，填入 App ID 和 App Secret
+FEISHU_APP_ID=cli_xxxxxxxx
+FEISHU_APP_SECRET=xxxxxxxxxxxx
 
-# 3. 启动（生产模式，后台运行）
-npm start
+# 3. 启动
+opencode-copilot start
 
 # 4. 在飞书给 bot 发消息即可
 ```
+
+> 源码部署：`git clone https://github.com/zzzz23792364/opencode-copilot.git && cd opencode-copilot && npm install && npm start`
 
 ## Features
 
