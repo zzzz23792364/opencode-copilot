@@ -1,4 +1,4 @@
-# @woxiaoniu/opencode-copilot: 飞书 ↔ opencode TUI 双向桥
+# opencode-copilot: 飞书 ↔ opencode TUI 双向桥
 
 在飞书聊天框里直接使用 opencode 终端 AI 助手，与 TUI 共享同一会话、同一历史。
 
@@ -56,10 +56,10 @@ npm start
 
 当模型处于 `--thinking` 模式时，推理过程通过 `reasoning` NDJSON 事件捕获，以 `---` 分隔线附加在回复末尾，不影响主回复流。
 
-## 为什么是 @woxiaoniu/opencode-copilot，而非其他方案？
+## 为什么是 opencode-copilot，而非其他方案？
 
-| 维度 | @woxiaoniu/opencode-copilot | NeverMore93/opencode-feishu | @neomei/opencode-feishu |
-|------|----------------------------|----------------------------|------------------------|
+| 维度 | **opencode-copilot** | NeverMore93/opencode-feishu | @neomei/opencode-feishu |
+|------|---------------------|----------------------------|------------------------|
 | **运行模式** | 独立桥接服务 | opencode 插件（进程内） | 独立 CLI + 插件 |
 | **依赖 serve** | ❌ 不需要 | ✅ 需要 | ✅ 需要 |
 | **会话共享 TUI** | ✅ 同一 SQLite DB | ❌ 不共享 | ❌ 不共享 |
