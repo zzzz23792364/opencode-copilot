@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.3.0] - 2026-06-01
+
+### Added
+
+- **`reasoning` 事件管道**: `type:"reasoning"` NDJSON 通过 `onText` 推入流式管线，`---` 分隔显示
+- **LICENSE**: MIT 开源协议
+
+### Fixed
+
+- **安全**: `.env.example` 移除真实飞书凭据，改为占位符
+- **清理**: 删除两个残留的 debug `console.error`
+
+### Docs
+
+- 新增 `docs/decisions/D003-format-json-streaming-behavior.md` — 流式调研决策
+
+---
+
 ## [0.2.1] - 2026-06-01
 
 ### Added

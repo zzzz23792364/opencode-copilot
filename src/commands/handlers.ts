@@ -79,8 +79,6 @@ export function createCommandHandler(): CommandHandler {
     db: Database,
   ): Promise<CommandResult> {
     const trimmed = text.trim()
-    console.error('INSIDE_HANDLE', trimmed, trimmed === '/cf')
-
     // /new
     if (trimmed === '/new' || trimmed.startsWith('/new ')) {
       const oldCwd = getCwd(db, chatId)

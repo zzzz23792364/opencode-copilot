@@ -116,7 +116,6 @@ async function main() {
       }
 
       // Check commands
-      console.error('BEFORE_HANDLE', parsed.text)
       const cmdResult = await commandHandler.handle(
         parsed.text,
         parsed.chatId,
