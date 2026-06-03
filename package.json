@@ -1,5 +1,5 @@
 {
-  "name": "opencode-copilot",
+  "name": "@woxiaoniu/opencode-copilot",
   "version": "0.3.0",
   "description": "Feishu ↔ opencode TUI bidirectional bridge — share the same opencode session between your terminal and Feishu",
   "keywords": [

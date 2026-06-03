@@ -1,4 +1,4 @@
-# opencode-copilot: 飞书 ↔ opencode TUI 双向桥
+# @woxiaoniu/opencode-copilot: 飞书 ↔ opencode TUI 双向桥
 
 在飞书聊天框里直接使用 opencode 终端 AI 助手，与 TUI 共享同一会话、同一历史。
 
@@ -13,7 +13,7 @@
 
 ```bash
 # 推荐：全局安装
-npm install -g opencode-copilot
+npm install -g @woxiaoniu/opencode-copilot
 
 # 或者：git clone 部署
 git clone https://github.com/zzzz23792364/opencode-copilot.git
@@ -56,10 +56,10 @@ npm start
 
 当模型处于 `--thinking` 模式时，推理过程通过 `reasoning` NDJSON 事件捕获，以 `---` 分隔线附加在回复末尾，不影响主回复流。
 
-## 为什么是 opencode-copilot，而非其他方案？
+## 为什么是 @woxiaoniu/opencode-copilot，而非其他方案？
 
-| 维度 | opencode-copilot | NeverMore93/opencode-feishu | @neomei/opencode-feishu |
-|------|-----------------|----------------------------|------------------------|
+| 维度 | @woxiaoniu/opencode-copilot | NeverMore93/opencode-feishu | @neomei/opencode-feishu |
+|------|----------------------------|----------------------------|------------------------|
 | **运行模式** | 独立桥接服务 | opencode 插件（进程内） | 独立 CLI + 插件 |
 | **依赖 serve** | ❌ 不需要 | ✅ 需要 | ✅ 需要 |
 | **会话共享 TUI** | ✅ 同一 SQLite DB | ❌ 不共享 | ❌ 不共享 |
@@ -67,7 +67,7 @@ npm start
 | **流式粒度** | 每次回复整块发送 | 轮询检测完成 | SSE 逐 token |
 | **启动开销** | ~400ms/次 | 0（进程内） | ~0（SSE 长连） |
 
-**opencode-copilot 的核心差异化优势**：
+**核心差异化优势**：
 - **不依赖 `opencode serve`** — 只要 CLI 装好就能跑，不受 serve 模式稳定性影响
 - **与 TUI 共享 session** — 飞书发的消息在 TUI `ls` 可见，TUI 的回复飞书也能查
 - **架构极简** — 单进程 + SQLite，0 额外依赖
@@ -107,7 +107,7 @@ npm start
 
 ## Session Mapping
 
-首次消息时自动发现或创建 session，映射关系存储在 `~/.opencode-copilot/sessions.db`：
+首次消息时自动发现或创建 session，映射关系存储在 `~/.opencode-copilot/sessions.db`（包名变更后兼容旧路径）：
 
 ```
 feishu_key (chat_id) → session_id (ses_xxx)
