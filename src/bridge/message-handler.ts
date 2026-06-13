@@ -43,39 +43,44 @@ export function createMessageHandler(
     const { sessionId, cwd, flags, model, cliArgs } = await sessionManager.getOrCreate(chatId)
 
     log.info({ chatId, sessionId }, 'Running opencode (streaming)')
+    sessionManager.setBusy(chatId, true)
 
-    const streaming = await outbound.sendStreaming(chatId, 'feishu')
+    try {
+      const streaming = await outbound.sendStreaming(chatId, 'feishu')
 
-    let aborted = false
+      let aborted = false
 
-    const result = await opencodeRun({
-      prompt,
-      sessionId,
-      cwd: cwd || undefined,
-      flags,
-      model: model || undefined,
-      cliArgs,
-      onText: (chunk) => { streaming.onChunk(chunk).catch(() => {}) },
-      onToolUse: (toolName) => { streaming.onToolUse(toolName, 'running').catch(() => {}) },
-      onStart: (abort) => {
-        registerRun(chatId, () => {
-          aborted = true
-          abort()
-          streaming.cancel()
-        })
-      },
-    })
+      const result = await opencodeRun({
+        prompt,
+        sessionId,
+        cwd: cwd || undefined,
+        flags,
+        model: model || undefined,
+        cliArgs,
+        onText: (chunk) => { streaming.onChunk(chunk).catch(() => {}) },
+        onToolUse: (toolName) => { streaming.onToolUse(toolName, 'running').catch(() => {}) },
+        onStart: (abort) => {
+          registerRun(chatId, () => {
+            aborted = true
+            abort()
+            streaming.cancel()
+          })
+        },
+      })
 
-    unregisterRun(chatId)
+      unregisterRun(chatId)
 
-    if (aborted) return
+      if (aborted) return
 
-    if (result.sessionId && result.sessionId !== sessionId) {
-      log.info({ old: sessionId, new: result.sessionId }, 'Session ID changed')
+      if (result.sessionId && result.sessionId !== sessionId) {
+        log.info({ old: sessionId, new: result.sessionId }, 'Session ID changed')
+      }
+
+      log.info({ chatId, replyLen: result.text.length }, 'Got reply')
+      await streaming.onEnd(result.text)
+    } finally {
+      sessionManager.setBusy(chatId, false)
     }
-
-    log.info({ chatId, replyLen: result.text.length }, 'Got reply')
-    await streaming.onEnd(result.text)
   }
 
   async function handle(parsed: FeishuInboundMessage): Promise<void> {

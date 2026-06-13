@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { getSessionStmt } from '../utils/db.js'
 import { createLogger } from '../utils/logger.js'
 import type { SessionManager } from '../bridge/session-manager.js'
-import { listProjects, listSessions } from '../utils/opencode-db.js'
+import { listProjects, listSessions, listTodos, getSessionInfo, getLastReplyText } from '../utils/opencode-db.js'
 
 const log = createLogger('commands')
 
@@ -235,6 +235,61 @@ export function createCommandHandler(): CommandHandler {
       return { kind: 'reply', text: `✅ 已取消绑定\n原 Session: ${existing.session_id}` }
     }
 
+    // /todo — list todos for current session
+    if (trimmed === '/todo') {
+      const existing = sessionManager.getSession(chatId)
+      if (!existing) return { kind: 'reply', text: '❌ 当前没有绑定的会话' }
+      const todos = listTodos(existing.session_id)
+      if (todos.length === 0) return { kind: 'reply', text: '📋 当前会话暂无待办项' }
+
+      const lines: string[] = ['📋 **待办项**']
+      const groups: Record<string, string[]> = { pending: [], in_progress: [], completed: [] }
+      for (const t of todos) {
+        const icon = t.priority === 'high' ? '🔴' : t.priority === 'medium' ? '🟡' : '🟢'
+        const label = t.status === 'completed' ? `✅ ${t.content}` : `${icon} ${t.content}`
+        groups[t.status]?.push(label)
+      }
+      if (groups.pending.length) lines.push('', '**待处理:**', ...groups.pending.map(l => `  ${l}`))
+      if (groups.in_progress.length) lines.push('', '**进行中:**', ...groups.in_progress.map(l => `  ${l}`))
+      if (groups.completed.length) lines.push('', '**已完成:**', ...groups.completed.map(l => `  ${l}`))
+      return { kind: 'reply', text: lines.join('\n') }
+    }
+
+    // /info — show session details
+    if (trimmed === '/info') {
+      const existing = sessionManager.getSession(chatId)
+      if (!existing) return { kind: 'reply', text: '❌ 当前没有绑定的会话' }
+
+      const info = getSessionInfo(existing.session_id)
+      if (!info) return { kind: 'reply', text: '❌ 未找到会话信息' }
+
+      const modelStr = info.model ? (() => { try { const m = JSON.parse(info.model); return `${m.id} (${m.providerID})` } catch { return info.model } })() : '默认'
+      const busy = sessionManager.isBusy(chatId)
+      const statusIcon = busy ? '🟡' : '🟢'
+      const statusText = busy ? '处理中' : '空闲'
+
+      const lastReply = getLastReplyText(existing.session_id)
+      const lastReplySnippet = lastReply ? lastReply.slice(0, 120).replace(/\n/g, ' ') + (lastReply.length > 120 ? '...' : '') : '暂无'
+
+      const lines = [
+        '📊 **会话信息**',
+        '',
+        `ID: ${info.id}`,
+        `标题: ${info.title || '(无标题)'}`,
+        `Agent: ${info.agent || 'default'}`,
+        `模型: ${modelStr}`,
+        '',
+        `Token: ↑${info.tokensInput.toLocaleString()} / ↓${info.tokensOutput.toLocaleString()} / 🧠 ${info.tokensReasoning.toLocaleString()}(reasoning)`,
+        `Cache: 📖 ${info.tokensCacheRead.toLocaleString()}(read) / ✍️ ${info.tokensCacheWrite.toLocaleString()}(write)`,
+        `费用: $${info.cost.toFixed(6)}`,
+        '',
+        `状态: ${statusIcon} ${statusText}`,
+        '',
+        `最后回复: ${lastReplySnippet}`,
+      ]
+      return { kind: 'reply', text: lines.join('\n') }
+    }
+
     // /where /status
     if (trimmed === '/where' || trimmed === '/status') {
       const existing = sessionManager.getSession(chatId)
@@ -266,6 +321,8 @@ export function createCommandHandler(): CommandHandler {
 \`/connect <id>\` — 直接绑定
 \`/unbind\` — 取消绑定
 \`/where\` / \`/status\` — 查看当前绑定信息
+\`/todo\` — 查看当前会话的待办项
+\`/info\` — 查看当前会话详情（Token、状态等）
 \`/commands\` / \`/help\` — 命令列表`,
       }
     }
