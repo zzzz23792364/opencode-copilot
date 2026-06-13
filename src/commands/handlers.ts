@@ -305,16 +305,11 @@ export function createCommandHandler(): CommandHandler {
       for (let i = 0; i < history.length; i++) {
         const h = history[i]
         if (i > 0) lines.push('', '───')
-        lines.push('', `📩 **用户**`)
-        lines.push(h.userQuery || '(空)')
-        if (h.thinking) {
-          lines.push('', `💭 **思考**`)
-          lines.push(h.thinking)
-        }
-        lines.push('', `🤖 **回复**`)
-        lines.push(h.reply || '(空)')
+        if (h.userQuery) lines.push('', `📩 **用户**`, h.userQuery)
+        if (h.thinking) lines.push('', `💭 **思考**`, h.thinking)
+        if (h.reply) lines.push('', `🤖 **回复**`, h.reply)
       }
-      return { kind: 'reply', text: lines.join('\n') }
+      if (lines.length === 0) return { kind: 'reply', text: '📭 暂无有效历史消息' }
     }
 
     // /where /status
