@@ -310,6 +310,7 @@ export function createCommandHandler(): CommandHandler {
         if (h.reply) lines.push('', `🤖 **回复**`, h.reply)
       }
       if (lines.length === 0) return { kind: 'reply', text: '📭 暂无有效历史消息' }
+      return { kind: 'reply', text: lines.join('\n') }
     }
 
     // /where /status
