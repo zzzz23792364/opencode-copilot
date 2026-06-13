@@ -127,41 +127,87 @@ export interface HistoryEntry {
 export function getSessionHistory(sessionId: string, count: number): HistoryEntry[] {
   const db = openReadonly()
   try {
-    const userMsgs = db.prepare(
-      'SELECT id, data FROM message WHERE session_id = ? AND data LIKE \'%"role":"user"%\' ORDER BY time_created DESC LIMIT ?'
-    ).all(sessionId, count) as Array<{ id: string; data: string }>
+    // 1) One query: all messages for this session
+    const allMsgs = db.prepare(
+      'SELECT id, data FROM message WHERE session_id = ? ORDER BY time_created ASC'
+    ).all(sessionId) as Array<{ id: string; data: string }>
 
+    // Build indexes in JS (no more DB queries)
+    const byId = new Map<string, { role: string; parentID: string | null }>()
+    const userMsgIds: string[] = []
+    for (const m of allMsgs) {
+      let role = ''
+      let parentID: string | null = null
+      try {
+        const d = JSON.parse(m.data)
+        role = d.role || ''
+        parentID = d.parentID || null
+      } catch { /* skip */ }
+      byId.set(m.id, { role, parentID })
+      if (role === 'user') userMsgIds.push(m.id)
+    }
+
+    // Take the last N user messages
+    const targetUserIds = userMsgIds.slice(-count)
+    if (targetUserIds.length === 0) return []
+
+    // Build parentID → children map
+    const childrenOf = new Map<string, string[]>()
+    for (const [id, info] of byId) {
+      if (info.parentID && info.role === 'assistant') {
+        const list = childrenOf.get(info.parentID) || []
+        list.push(id)
+        childrenOf.set(info.parentID, list)
+      }
+    }
+
+    // Collect all assistant message IDs that we need parts for
+    const assistIds = new Set<string>()
+    for (const uid of targetUserIds) {
+      const children = childrenOf.get(uid)
+      if (children) for (const cid of children) assistIds.add(cid)
+    }
+
+    // 2) One query: all relevant parts
+    const partsMap = new Map<string, Array<{ type: string; text: string }>>()
+    if (assistIds.size > 0) {
+      const placeholders = Array.from(assistIds).map(() => '?').join(',')
+      const partRows = db.prepare(
+        `SELECT message_id, data FROM part WHERE message_id IN (${placeholders}) ORDER BY message_id, time_created`
+      ).all(...Array.from(assistIds)) as Array<{ message_id: string; data: string }>
+      for (const pr of partRows) {
+        try {
+          const pd = JSON.parse(pr.data)
+          if (pd.type === 'text' || pd.type === 'reasoning') {
+            const list = partsMap.get(pr.message_id) || []
+            list.push({ type: pd.type, text: pd.text || '' })
+            partsMap.set(pr.message_id, list)
+          }
+        } catch { /* skip */ }
+      }
+    }
+
+    // Build entries
     const entries: HistoryEntry[] = []
-    for (const userMsg of userMsgs.reverse()) {
-      const userData = JSON.parse(userMsg.data)
+    for (const uid of targetUserIds) {
       let userQuery = ''
       try {
-        if (userData.summary?.diffs?.[0]?.newContent) {
-          userQuery = userData.summary.diffs[0].newContent
-        } else if (userData.content) {
-          userQuery = userData.content
+        const raw = allMsgs.find(m => m.id === uid)
+        if (raw) {
+          const d = JSON.parse(raw.data)
+          if (d.summary?.diffs?.[0]?.newContent) userQuery = d.summary.diffs[0].newContent
+          else if (d.content) userQuery = d.content
         }
       } catch { /* ignore */ }
 
-      const childAssistMsgs = db.prepare(
-        'SELECT id FROM message WHERE session_id = ? AND data LIKE ? ORDER BY time_created ASC'
-      ).all(sessionId, `%"parentID":"${userMsg.id}"%`) as Array<{ id: string }>
-
       let thinking: string | null = null
       let reply = ''
-      for (const child of childAssistMsgs) {
-        const partRows = db.prepare(
-          'SELECT data FROM part WHERE message_id = ? AND (data LIKE \'%"type":"text"%\' OR data LIKE \'%"type":"reasoning"%\') ORDER BY time_created'
-        ).all(child.id) as Array<{ data: string }>
-        for (const pr of partRows) {
-          try {
-            const pd = JSON.parse(pr.data)
-            if (pd.type === 'reasoning' && pd.text) {
-              thinking = pd.text as string
-            } else if (pd.type === 'text' && pd.text) {
-              reply += (reply ? '\n\n' : '') + pd.text
-            }
-          } catch { /* skip */ }
+      const children = childrenOf.get(uid) || []
+      for (const cid of children) {
+        const parts = partsMap.get(cid) || []
+        for (const p of parts) {
+          if (p.type === 'reasoning' && p.text) thinking = (thinking ? thinking + '\n\n' : '') + p.text
+          if (p.type === 'text' && p.text) reply += (reply ? '\n\n' : '') + p.text
         }
       }
 
