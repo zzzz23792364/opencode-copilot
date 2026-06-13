@@ -49,6 +49,7 @@ opencode-copilot start
 | `/cf` | 交互式配置（模型 / CLI 参数） |
 | `/list` | 查看活跃会话 |
 | `/todo` | 查看当前会话的待办项 |
+| `/his` [N] | 查看最近 N 条对话（含思考过程） |
 | `/info` | 查看会话详情（Token、状态、最后回复） |
 | `/help` | 显示帮助 |
 

@@ -117,3 +117,61 @@ export function getLastReplyText(sessionId: string): string | null {
     db.close()
   }
 }
+
+export interface HistoryEntry {
+  userQuery: string
+  thinking: string | null
+  reply: string
+}
+
+export function getSessionHistory(sessionId: string, count: number): HistoryEntry[] {
+  const db = openReadonly()
+  try {
+    const assistantMsgs = db.prepare(
+      'SELECT id, data FROM message WHERE session_id = ? AND data LIKE \'%"role":"assistant"%\' ORDER BY time_created DESC LIMIT ?'
+    ).all(sessionId, count) as Array<{ id: string; data: string }>
+
+    const entries: HistoryEntry[] = []
+    for (const msg of assistantMsgs.reverse()) {
+      const msgData = JSON.parse(msg.data)
+      const parentId = msgData.parentID
+
+      let userQuery = ''
+      if (parentId) {
+        const userRow = db.prepare('SELECT data FROM message WHERE id = ?').get(parentId) as { data: string } | undefined
+        if (userRow) {
+          try {
+            const userData = JSON.parse(userRow.data)
+            if (userData.summary?.diffs?.[0]?.newContent) {
+              userQuery = userData.summary.diffs[0].newContent
+            } else if (userData.content) {
+              userQuery = userData.content
+            }
+          } catch { /* ignore */ }
+        }
+      }
+
+      const partRows = db.prepare(
+        'SELECT data FROM part WHERE message_id = ? AND (data LIKE \'%"type":"text"%\' OR data LIKE \'%"type":"reasoning"%\') ORDER BY time_created'
+      ).all(msg.id) as Array<{ data: string }>
+
+      let thinking: string | null = null
+      let reply = ''
+      for (const pr of partRows) {
+        try {
+          const pd = JSON.parse(pr.data)
+          if (pd.type === 'reasoning' && pd.text) {
+            thinking = pd.text as string
+          } else if (pd.type === 'text' && pd.text) {
+            reply += (reply ? '\n\n' : '') + pd.text
+          }
+        } catch { /* skip */ }
+      }
+
+      entries.push({ userQuery, thinking, reply })
+    }
+    return entries
+  } finally {
+    db.close()
+  }
+}

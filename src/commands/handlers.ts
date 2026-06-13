@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { getSessionStmt } from '../utils/db.js'
 import { createLogger } from '../utils/logger.js'
 import type { SessionManager } from '../bridge/session-manager.js'
-import { listProjects, listSessions, listTodos, getSessionInfo, getLastReplyText } from '../utils/opencode-db.js'
+import { listProjects, listSessions, listTodos, getSessionInfo, getLastReplyText, getSessionHistory } from '../utils/opencode-db.js'
 
 const log = createLogger('commands')
 
@@ -268,8 +268,8 @@ export function createCommandHandler(): CommandHandler {
       const statusIcon = busy ? '🟡' : '🟢'
       const statusText = busy ? '处理中' : '空闲'
 
-      const lastReply = getLastReplyText(existing.session_id)
-      const lastReplySnippet = lastReply ? lastReply.slice(0, 120).replace(/\n/g, ' ') + (lastReply.length > 120 ? '...' : '') : '暂无'
+      const lastReply = getLastReplyText(existing.session_id) || '(暂无)'
+      const lastReplySnippet = lastReply.replace(/\n/g, '\n  ')
 
       const lines = [
         '📊 **会话信息**',
@@ -287,6 +287,33 @@ export function createCommandHandler(): CommandHandler {
         '',
         `最后回复: ${lastReplySnippet}`,
       ]
+      return { kind: 'reply', text: lines.join('\n') }
+    }
+
+    // /his [N] — show history, default 1
+    if (trimmed === '/his' || trimmed.startsWith('/his ')) {
+      const existing = sessionManager.getSession(chatId)
+      if (!existing) return { kind: 'reply', text: '❌ 当前没有绑定的会话' }
+
+      const n = trimmed.startsWith('/his ') ? parseInt(trimmed.slice('/his '.length).trim(), 10) : 1
+      if (isNaN(n) || n < 1) return { kind: 'reply', text: '❌ 用法: /his [数量]' }
+
+      const history = getSessionHistory(existing.session_id, n)
+      if (history.length === 0) return { kind: 'reply', text: '📭 暂无历史消息' }
+
+      const lines: string[] = []
+      for (let i = 0; i < history.length; i++) {
+        const h = history[i]
+        if (i > 0) lines.push('', '───')
+        lines.push('', `📩 **用户**`)
+        lines.push(h.userQuery || '(空)')
+        if (h.thinking) {
+          lines.push('', `💭 **思考**`)
+          lines.push(h.thinking)
+        }
+        lines.push('', `🤖 **回复**`)
+        lines.push(h.reply || '(空)')
+      }
       return { kind: 'reply', text: lines.join('\n') }
     }
 
@@ -322,6 +349,7 @@ export function createCommandHandler(): CommandHandler {
 \`/unbind\` — 取消绑定
 \`/where\` / \`/status\` — 查看当前绑定信息
 \`/todo\` — 查看当前会话的待办项
+\`/his\` [N] — 查看最近 N 条对话 (默认 1)
 \`/info\` — 查看当前会话详情（Token、状态等）
 \`/commands\` / \`/help\` — 命令列表`,
       }
