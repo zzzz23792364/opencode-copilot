@@ -13,8 +13,6 @@ export interface SessionManager {
   getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null; flags: RunFlags; model: string | null; cliArgs: string[] }>
   getSession(feishuKey: string): SessionRow | null
   touch(feishuKey: string): void
-  setBusy(feishuKey: string, busy: boolean): void
-  isBusy(feishuKey: string): boolean
 }
 
 function parseFlags(raw: string | null): RunFlags {
@@ -29,7 +27,6 @@ function parseCliArgs(raw: string | null): string[] {
 
 export function createSessionManager(db: Database): SessionManager {
   const stmt = getSessionStmt(db)
-  const busyChats = new Set<string>()
 
   function getSession(feishuKey: string): SessionRow | null {
     return stmt.get.get(feishuKey) ?? null
@@ -37,15 +34,6 @@ export function createSessionManager(db: Database): SessionManager {
 
   function touch(feishuKey: string): void {
     stmt.touch.run(Date.now(), feishuKey)
-  }
-
-  function setBusy(feishuKey: string, busy: boolean) {
-    if (busy) busyChats.add(feishuKey)
-    else busyChats.delete(feishuKey)
-  }
-
-  function isBusy(feishuKey: string): boolean {
-    return busyChats.has(feishuKey)
   }
 
   async function getOrCreate(feishuKey: string, cwd?: string): Promise<{ sessionId: string; cwd: string | null; flags: RunFlags; model: string | null; cliArgs: string[] }> {
@@ -84,5 +72,5 @@ export function createSessionManager(db: Database): SessionManager {
     return { sessionId, cwd: upsertCwd, flags: {}, model: null, cliArgs: [] }
   }
 
-  return { getOrCreate, getSession, touch, setBusy, isBusy }
+  return { getOrCreate, getSession, touch }
 }

@@ -175,3 +175,22 @@ export function getSessionHistory(sessionId: string, count: number): HistoryEntr
     db.close()
   }
 }
+
+export function isSessionBusy(sessionId: string): boolean {
+  const db = openReadonly()
+  try {
+    const lastMsg = db.prepare(
+      'SELECT data FROM message WHERE session_id = ? ORDER BY time_created DESC LIMIT 1'
+    ).get(sessionId) as { data: string } | undefined
+    if (!lastMsg) return false
+
+    const d = JSON.parse(lastMsg.data)
+    if (d.role === 'user') return true
+    if (d.role === 'assistant' && !d.finish) return true
+    return false
+  } catch {
+    return false
+  } finally {
+    db.close()
+  }
+}

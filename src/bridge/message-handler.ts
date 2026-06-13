@@ -77,14 +77,11 @@ export function createMessageHandler(
 
       log.info({ chatId, replyLen: result.text.length }, 'Got reply')
       await streaming.onEnd(result.text)
-    } finally { /* busy cleared in handle() queue .finally() */ }
+    } finally { /* no-op */ }
   }
 
   async function handle(parsed: FeishuInboundMessage): Promise<void> {
     const chatId = parsed.chatId
-    // Mark busy immediately when entering queue, so /info sees it before
-    // processEvent starts. Cleared in .finally() when queue drains.
-    sessionManager.setBusy(chatId, true)
 
     const prev = queues.get(chatId) ?? Promise.resolve()
     const next = prev
@@ -93,7 +90,6 @@ export function createMessageHandler(
         log.error({ err: String(err), chatId }, 'Message processing failed')
       })
       .finally(() => {
-        sessionManager.setBusy(chatId, false)
         if (queues.get(chatId) === next) {
           queues.delete(chatId)
         }

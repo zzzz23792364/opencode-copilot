@@ -3,7 +3,7 @@ import { spawn } from 'node:child_process'
 import { getSessionStmt } from '../utils/db.js'
 import { createLogger } from '../utils/logger.js'
 import type { SessionManager } from '../bridge/session-manager.js'
-import { listProjects, listSessions, listTodos, getSessionInfo, getLastReplyText, getSessionHistory } from '../utils/opencode-db.js'
+import { listProjects, listSessions, listTodos, getSessionInfo, getLastReplyText, getSessionHistory, isSessionBusy } from '../utils/opencode-db.js'
 
 const log = createLogger('commands')
 
@@ -264,7 +264,7 @@ export function createCommandHandler(): CommandHandler {
       if (!info) return { kind: 'reply', text: '❌ 未找到会话信息' }
 
       const modelStr = info.model ? (() => { try { const m = JSON.parse(info.model); return `${m.id} (${m.providerID})` } catch { return info.model } })() : '默认'
-      const busy = sessionManager.isBusy(chatId)
+      const busy = isSessionBusy(existing.session_id)
       const statusIcon = busy ? '🟡' : '🟢'
       const statusText = busy ? '处理中' : '空闲'
 

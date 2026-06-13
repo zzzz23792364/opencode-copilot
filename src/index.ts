@@ -115,14 +115,6 @@ async function main() {
         // non-fatal
       }
 
-      // Mark busy BEFORE first await (commandHandler.handle yields), so
-      // /info can see queued messages even before processEvent starts.
-      // Commands (all start with /) don't set busy — they're fast lookups.
-      const isCommand = parsed.text.trim().startsWith('/')
-      if (!isCommand) {
-        sessionManager.setBusy(parsed.chatId, true)
-      }
-
       // Check commands
       const cmdResult = await commandHandler.handle(
         parsed.text,
