@@ -45,7 +45,10 @@ export function opencodeRun(
     } else if (opts.flags?.danger) {
       args.push('--dangerously-skip-permissions')
     }
-    args.push(opts.prompt)
+    // shell:true passes args through /bin/sh -c, so special chars like
+    // () must be escaped. POSIX single-quote wrapping handles all chars.
+    const quotedPrompt = "'" + opts.prompt.replace(/'/g, "'\\''") + "'"
+    args.push(quotedPrompt)
 
     log.info({ sessionId: opts.sessionId, cwd: opts.cwd, args, prompt: opts.prompt.slice(0, 50) }, 'spawning opencode')
 
